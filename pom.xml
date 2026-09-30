@@ -83,6 +83,12 @@
             <artifactId>spring-boot-starter-kafka-test</artifactId>
             <scope>test</scope>
         </dependency>
+
+        <!-- Bean Validation (JSR-380) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
     </dependencies>
 
     <dependencyManagement>
