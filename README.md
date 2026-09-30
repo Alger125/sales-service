@@ -340,3 +340,109 @@ java -Xmx300m -jar .\target\sales-service-0.0.1-SNAPSHOT.jar
 * **Puerto configurado:** `8081`
 * **Consola H2 Database:** `http://localhost:8081/h2-console`
 * **JDBC URL:** `jdbc:h2:mem:salesdb`
+
+
+---
+
+## 8. Flujo de Interaccion Integral del Ecosistema (End-to-End)
+
+Esta seccion describe la secuencia operativa completa que conecta a **`eureka-server`**, **`catalog-service`** y **`sales-service`** en un escenario real de compra de videojuegos.
+
+### Diagrama de Secuencia de la Interaccion Completa
+
+```
+[Usuario / Postman]     [sales-service:8081]      [eureka-server:8761]      [catalog-service:8082]     [MongoDB:27017]
+         |                       |                         |                          |                       |
+         |=== 1. Registro inicial en el ecosistema =========================================================|
+         |                       |                         |<--- Registra CATALOG ----|                       |
+         |                       |<--- Registra SALES -----|                          |                       |
+         |                       |                         |                          |                       |
+         |=== 2. Alta de Videojuego en Catalogo ============================================================|
+         |-- POST /api/games -------------------------------------------------------->|                       |
+         |   (Elden Ring, $59.99, stock: 10)               |                          |-- save(Game) -------->|
+         |                                                 |                          |<-- id: "674a123f..." -|
+         |<-- HTTP 201 Created (id: "674a123f...") -----------------------------------|                       |
+         |                                                 |                          |                       |
+         |=== 3. Intento de Compra con Validacion Sincrona (OpenFeign) =====================================|
+         |-- POST /api/orders ---------------------------->|                          |                       |
+         |   (gameId: "674a123f...", qty: 2)               |                          |                       |
+         |                       |-- 3.1 Resolucion ------>|                          |                       |
+         |                       |    "¿Donde esta CATALOG?"                          |                       |
+         |                       |<-- Retorna 8082 --------|                          |                       |
+         |                       |                                                    |                       |
+         |                       |-- 3.2 GET /api/games/674a123f... (OpenFeign) ----->|                       |
+         |                       |                                                    |-- findById() -------->|
+         |                       |                                                    |<-- Game Document -----|
+         |                       |<-- HTTP 200 OK (Price: $59.99, Stock: 10) ---------|                       |
+         |                       |                                                    |                       |
+         |                       |-- 3.3 Reglas de Negocio en Servidor:               |                       |
+         |                       |   a) Verifica: stock (10) >= cantidad (2) -> OK    |                       |
+         |                       |   b) Blindaje: Aplica $59.99 (ignora cliente)      |                       |
+         |                       |   c) Genera CD-Key: "STEAM-A8F2-4B1C..."           |                       |
+         |                       |   d) Persiste en H2 SQL (Transaccion ACID)         |                       |
+         |<-- HTTP 201 Created --|                                                    |                       |
+         |   (Total: $119.98, CD-Keys generadas)                                      |                       |
+```
+
+### Guia de Reproduccion Paso a Paso de la Interaccion
+
+#### Paso 1: Inicializar Eureka Server
+En una terminal:
+```powershell
+cd C:\Users\ErickJimz\IdeaProjects\eureka-server
+.\mvnw.cmd spring-boot:run
+```
+*Verificar:* Abrir el navegador en `http://localhost:8761` (Dashboard de Eureka activo).
+
+#### Paso 2: Inicializar Catalog Service
+En una segunda terminal:
+```powershell
+cd C:\Users\ErickJimz\IdeaProjects\catalog-service
+.\mvnw.cmd spring-boot:run
+```
+*Verificar:* En `http://localhost:8761` aparecera registrado el nodo **`CATALOG-SERVICE`** en estado `UP`.
+
+#### Paso 3: Inicializar Sales Service
+En una tercera terminal:
+```powershell
+cd C:\Users\ErickJimz\IdeaProjects\sales-service
+.\mvnw.cmd spring-boot:run
+```
+*Verificar:* En `http://localhost:8761` aparecera registrado el nodo **`SALES-SERVICE`** en estado `UP`.
+
+#### Paso 4: Crear el Videojuego en el Catalogo (MongoDB)
+```powershell
+$gameResponse = Invoke-RestMethod -Uri "http://localhost:8082/api/games" -Method Post -ContentType "application/json" -Body '{
+  "title": "Elden Ring",
+  "description": "Edicion Estandar",
+  "genre": "RPG",
+  "price": 59.99,
+  "stock": 10,
+  "platforms": ["PC", "PS5"]
+}'
+$gameId = $gameResponse.id
+Write-Host "Juego registrado con ID NoSQL: $gameId"
+```
+
+#### Paso 5: Emitir la Orden de Compra en Ventas (Consumiendo Catalogo via OpenFeign)
+```powershell
+Invoke-RestMethod -Uri "http://localhost:8081/api/orders" -Method Post -ContentType "application/json" -Body @"
+{
+  "userId": 101,
+  "items": [
+    {
+      "gameId": "$gameId",
+      "gameTitle": "Elden Ring",
+      "unitPrice": 59.99,
+      "quantity": 2
+    }
+  ]
+}
+"@ | ConvertTo-Json -Depth 5
+```
+
+*Resultado observable:*
+* `sales-service` consulta de forma invisible a `catalog-service` a traves de Eureka.
+* Valida existencias y precio en MongoDB.
+* Genera las claves digitales seguras para el usuario.
+* Retorna la orden con el monto oficial calculado ($119.98).
