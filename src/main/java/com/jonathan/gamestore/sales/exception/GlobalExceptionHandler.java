@@ -13,7 +13,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * 🛡️ MANEJADOR GLOBAL DE EXCEPCIONES: GlobalExceptionHandler
+ * MANEJADOR GLOBAL DE EXCEPCIONES: GlobalExceptionHandler
  *
  * ¿Qué es y cómo funciona? (Concepto Senior explicado para Juniors)
  *
@@ -28,60 +28,60 @@ import java.util.Map;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
-    /**
-     * Atrapa específicamente la excepción 'MethodArgumentNotValidException'.
-     * Esta excepción es lanzada automáticamente por Spring cuando una petición con @Valid
-     * no cumple alguna de las reglas (ej: un campo @NotNull viene nulo o un @Positive es negativo).
-     */
-    @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<ErrorResponse> handleValidationExceptions(MethodArgumentNotValidException ex) {
-        Map<String, String> errors = new HashMap<>();
+ /**
+ * Atrapa específicamente la excepción 'MethodArgumentNotValidException'.
+ * Esta excepción es lanzada automáticamente por Spring cuando una petición con @Valid
+ * no cumple alguna de las reglas (ej: un campo @NotNull viene nulo o un @Positive es negativo).
+ */
+ @ExceptionHandler(MethodArgumentNotValidException.class)
+ public ResponseEntity<ErrorResponse> handleValidationExceptions(MethodArgumentNotValidException ex) {
+ Map<String, String> errors = new HashMap<>();
 
-        ex.getBindingResult().getAllErrors().forEach((error) -> {
-            String fieldName = ((FieldError) error).getField();
-            String errorMessage = error.getDefaultMessage();
-            errors.put(fieldName, errorMessage);
-        });
+ ex.getBindingResult().getAllErrors().forEach((error) -> {
+ String fieldName = ((FieldError) error).getField();
+ String errorMessage = error.getDefaultMessage();
+ errors.put(fieldName, errorMessage);
+ });
 
-        ErrorResponse response = new ErrorResponse(
-                HttpStatus.BAD_REQUEST.value(),
-                HttpStatus.BAD_REQUEST.getReasonPhrase(),
-                "Error en la validacion de los datos enviados",
-                errors,
-                LocalDateTime.now()
-        );
+ ErrorResponse response = new ErrorResponse(
+ HttpStatus.BAD_REQUEST.value(),
+ HttpStatus.BAD_REQUEST.getReasonPhrase(),
+ "Error en la validacion de los datos enviados",
+ errors,
+ LocalDateTime.now()
+ );
 
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
-    }
+ return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+ }
 
-    /**
-     * Atrapa excepciones de reglas de negocio (ej: stock insuficiente o juego inexistente).
-     * Devuelve HTTP 400 Bad Request con un mensaje claro en español.
-     */
-    @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<ErrorResponse> handleIllegalArgumentException(IllegalArgumentException ex) {
-        ErrorResponse response = new ErrorResponse(
-                HttpStatus.BAD_REQUEST.value(),
-                HttpStatus.BAD_REQUEST.getReasonPhrase(),
-                ex.getMessage(),
-                null,
-                LocalDateTime.now()
-        );
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
-    }
+ /**
+ * Atrapa excepciones de reglas de negocio (ej: stock insuficiente o juego inexistente).
+ * Devuelve HTTP 400 Bad Request con un mensaje claro en español.
+ */
+ @ExceptionHandler(IllegalArgumentException.class)
+ public ResponseEntity<ErrorResponse> handleIllegalArgumentException(IllegalArgumentException ex) {
+ ErrorResponse response = new ErrorResponse(
+ HttpStatus.BAD_REQUEST.value(),
+ HttpStatus.BAD_REQUEST.getReasonPhrase(),
+ ex.getMessage(),
+ null,
+ LocalDateTime.now()
+ );
+ return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+ }
 
-    /**
-     * Atrapa errores cuando OpenFeign llama a catalog-service y el juego no existe (HTTP 404).
-     */
-    @ExceptionHandler(FeignException.NotFound.class)
-    public ResponseEntity<ErrorResponse> handleFeignNotFound(FeignException.NotFound ex) {
-        ErrorResponse response = new ErrorResponse(
-                HttpStatus.NOT_FOUND.value(),
-                "Game Not Found In Catalog",
-                "El videojuego solicitado no fue encontrado en el catalogo de productos.",
-                null,
-                LocalDateTime.now()
-        );
-        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
-    }
+ /**
+ * Atrapa errores cuando OpenFeign llama a catalog-service y el juego no existe (HTTP 404).
+ */
+ @ExceptionHandler(FeignException.NotFound.class)
+ public ResponseEntity<ErrorResponse> handleFeignNotFound(FeignException.NotFound ex) {
+ ErrorResponse response = new ErrorResponse(
+ HttpStatus.NOT_FOUND.value(),
+ "Game Not Found In Catalog",
+ "El videojuego solicitado no fue encontrado en el catalogo de productos.",
+ null,
+ LocalDateTime.now()
+ );
+ return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
+ }
 }

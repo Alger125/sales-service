@@ -7,7 +7,7 @@ import org.springframework.stereotype.Repository;
 import java.util.List;
 
 /**
- * 🗄️ CAPA DE PERSISTENCIA: SaleOrderRepository
+ * CAPA DE PERSISTENCIA: SaleOrderRepository
  *
  * ¿Qué es y cómo funciona?
  * Es una interfaz que se comunica directamente con la base de datos SQL H2.
@@ -20,7 +20,7 @@ import java.util.List;
  * - findAll(): Trae todas las filas de la tabla.
  * - deleteById(Long id): Borra una fila por su clave primaria.
  *
- * 🪄 Consultas Derivadas (Query Methods):
+ * Consultas Derivadas (Query Methods):
  * Spring Boot lee el nombre del método y escribe el SQL por ti:
  * 'findByUserId(Long userId)' genera automáticamente:
  * SELECT * FROM sale_orders WHERE user_id = ?
@@ -28,10 +28,10 @@ import java.util.List;
 @Repository
 public interface SaleOrderRepository extends JpaRepository<SaleOrder, Long> {
 
-    /**
-     * Busca todas las órdenes de compra pertenecientes a un usuario específico.
-     * @param userId Identificador del usuario comprador.
-     * @return Lista de órdenes asociadas a ese usuario.
-     */
-    List<SaleOrder> findByUserId(Long userId);
+ /**
+ * Busca todas las órdenes de compra pertenecientes a un usuario específico.
+ * @param userId Identificador del usuario comprador.
+ * @return Lista de órdenes asociadas a ese usuario.
+ */
+ List<SaleOrder> findByUserId(Long userId);
 }

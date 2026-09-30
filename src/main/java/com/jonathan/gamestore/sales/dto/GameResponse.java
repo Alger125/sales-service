@@ -4,7 +4,7 @@ import java.math.BigDecimal;
 import java.util.List;
 
 /**
- * 📦 DTO DE RESPUESTA REMOTA: GameResponse
+ * DTO DE RESPUESTA REMOTA: GameResponse
  *
  * ¿Qué representa esta clase?
  * Es el molde en el que OpenFeign deposita la información que recibe desde 'catalog-service'.
@@ -26,13 +26,13 @@ import java.util.List;
  * @param active Estado del juego (true = activo para venta, false = descontinuado).
  */
 public record GameResponse(
-        String id,
-        String title,
-        String description,
-        String genre,
-        BigDecimal price,
-        Integer stock,
-        List<String> platforms,
-        Boolean active
+ String id,
+ String title,
+ String description,
+ String genre,
+ BigDecimal price,
+ Integer stock,
+ List<String> platforms,
+ Boolean active
 ) {
 }

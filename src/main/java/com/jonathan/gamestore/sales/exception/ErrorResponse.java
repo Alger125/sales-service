@@ -4,7 +4,7 @@ import java.time.LocalDateTime;
 import java.util.Map;
 
 /**
- * 🚨 DTO DE RESPUESTA DE ERROR: ErrorResponse
+ * DTO DE RESPUESTA DE ERROR: ErrorResponse
  *
  * ¿Por qué existe esta clase?
  * Por defecto, cuando ocurre un error en Spring Boot, el framework devuelve una página HTML fea
@@ -18,14 +18,14 @@ import java.util.Map;
  * @param error Nombre corto y oficial del tipo de error (ej: "Bad Request").
  * @param message Explicación legible en lenguaje humano de lo ocurrido.
  * @param validationErrors Mapa clave-valor donde la clave es el nombre del campo que falló
- *                         (ej: "quantity") y el valor es la regla rota (ej: "La cantidad debe ser al menos 1").
+ * (ej: "quantity") y el valor es la regla rota (ej: "La cantidad debe ser al menos 1").
  * @param timestamp Fecha y hora exacta del momento en que ocurrió el error.
  */
 public record ErrorResponse(
-        int status,
-        String error,
-        String message,
-        Map<String, String> validationErrors,
-        LocalDateTime timestamp
+ int status,
+ String error,
+ String message,
+ Map<String, String> validationErrors,
+ LocalDateTime timestamp
 ) {
 }
