@@ -1,282 +1,342 @@
-# Sales Service (`sales-service`)
+# Sales Service (sales-service)
 
-> **Microservicio de Gestión de Ventas, Órdenes y Generación de Claves Digitales de Videojuegos.** 
+> **Microservicio de Gestion de Ventas, Ordenes, Facturacion y Generacion de Claves Digitales.**  
 > Desarrollado con **Java 17**, **Spring Boot 4**, **Spring Data JPA**, **H2 Database**, **Spring Cloud Netflix Eureka** y **Spring Cloud OpenFeign**.
 
 ---
 
-## 1. ¿Por qué es un Microservicio Independiente? (Autonomía y Desacoplamiento)
+## 1. Introduccion y Justificacion Arquitectonica
 
-Una de las preguntas más importantes para un programador que da el salto a la arquitectura empresarial es: 
-**¿Por qué no metimos todo esto en un solo proyecto gigante (monolito)?**
+Una de las preguntas fundamentales en arquitectura de software empresarial es:  
+**¿Por que ventas es un microservicio autonomo e independiente?**
 
 ### Principio de Base de Datos Propia (Database-per-Service Pattern)
-En un sistema monolítico tradicional, si la base de datos se satura o se cae, **toda la tienda muere**. 
-En nuestra arquitectura de microservicios:
-* `sales-service` **posee su propia base de datos relacional (H2 / SQL)**. Ningún otro microservicio tiene permitido conectarse directamente por JDBC a las tablas de ventas.
-* **¿Por qué SQL para Ventas?** Porque las ventas involucran dinero y requieren garantías **ACID** (transacciones bancarias estrictas donde nada se puede perder ni duplicar).
-* Si mañana `catalog-service` se apaga o sufre una caída por mantenimiento, `sales-service` **sigue vivo**; puede consultar cachés locales o devolver un mensaje de reintento controlado sin tumbar el sistema completo.
+* En un monolito tradicional, un fallo en la base de datos detiene toda la empresa.
+* `sales-service` **posee su propia base de datos relacional (H2 / SQL)**. Ningun otro microservicio tiene permitido conectarse directamente por JDBC a las tablas de ventas.
+* **¿Por que SQL para Ventas?** Las ventas involucran transacciones monetarias y exigen cumplimiento estricto de propiedades **ACID** (Atomicidad, Consistencia, Aislamiento y Durabilidad).
+* Si `catalog-service` se encuentra bajo mantenimiento o sufre una caida, `sales-service` continua operativo, manteniendo aislada su base de datos.
 
-### Despliegue y Escalabilidad Independiente
-Si se acerca el *Black Friday*, la cantidad de personas pagando órdenes se dispara por 100x, pero la cantidad de administradores subiendo nuevos juegos al catálogo sigue siendo baja. 
-Al ser independiente, podemos levantar **5 instancias de `sales-service` en servidores distintos** sin tener que gastar memoria RAM levantando copias innecesarias del catálogo.
+### Escalabilidad Horizontal Independiente
+En temporadas de alta demanda (como promociones o ventas especiales), el volumen de transacciones de compra puede multiplicarse exponencialmente mientras que el catalogo de productos permanece estatico. La independencia permite escalar multiples instancias de `sales-service` sin desperdiciar memoria en componentes que no experimentan carga.
 
 ---
 
-## 2. Mapa de Relación: ¿Cómo se comunica con los demás Microservicios?
+## 2. Mapeo Exhaustivo de Comunicacion Inter-Microservicios
 
-Los microservicios **NUNCA** deben compartir bases de datos. Se comunican exclusivamente a través de la red usando protocolos ligeros:
+Esta seccion documenta exactamente **donde, como y a traves de que archivos y componentes tecnicos `sales-service` mapea y consume los demas microservicios del ecosistema**.
 
-```
- 
- EUREKA SERVER 
- (Directorio Telefónico) 
- Puerto 8761 
- 
- 
- 
- 1. Heartbeat ("Estoy vivo en 8081") 1. Heartbeat ("Estoy vivo en 8082")
- 
- 
- SALES-SERVICE CATALOG-SERVICE 
- Puerto 8081 Puerto 8082 
- Base de Datos H2 Base de Datos Mongo 
- (Ventas y CD-Keys) (Fichas de Juegos) 
- 
- 
- 2. Pregunta por HTTP vía OpenFeign 
- "¿El juego X existe y cuánto cuesta?" 
- 
-```
-
-### 1. Relación con `eureka-server` (Puerto 8761 - Discovery Server)
-* **¿Qué problema resuelve?**: En la nube o en contenedores Docker, las IPs y puertos cambian todo el tiempo. Si ponemos URLs fijas (*hardcoded*) como `http://192.168.1.50:8082`, el día que esa máquina cambie de IP, todo se rompe.
-* **¿Cómo interactúan?**:
- 1. Al arrancar `sales-service`, lee su archivo `application.properties` y busca a `eureka-server`.
- 2. Le dice: *"Hola Eureka, me llamo `SALES-SERVICE` y estoy escuchando en el puerto 8081"*.
- 3. Cada 30 segundos le manda un latido (*heartbeat*). Si `sales-service` se apaga, Eureka lo tacha de la lista para que nadie le envíe tráfico.
-
-### 2. Relación con `catalog-service` (Puerto 8082 - Inventario NoSQL vía OpenFeign)
-* **¿Qué problema resuelve?**: **Prevención de Fraude y Validación de Inventario**. 
- Si permitiéramos que el usuario o el frontend nos diga: *"Cobrame el Elden Ring a $0.01 centavos"*, cualquiera podría hackear la tienda modificando el JSON en el navegador.
-* **¿Cómo interactúan (Paso a Paso con OpenFeign)?**:
- 1. El cliente web manda a `sales-service`: *Quiero comprar 2 copias del juego ID "650c1f1e..."*.
- 2. `sales-service` no confía en nadie: mediante `CatalogClient` acude a Eureka y le pide la dirección viva de `CATALOG-SERVICE`.
- 3. Hace una llamada HTTP interna `GET /api/games/{id}` a `catalog-service`.
- 4. `catalog-service` responde con el objeto `GameResponse` con el precio oficial de MongoDB ($59.99), el stock disponible y si el juego está activo.
- 5. `sales-service` valida:
- * ¿El juego existe y `active == true`? Si no, rechaza la compra con `HTTP 400`.
- * ¿Hay suficiente stock (`stock >= quantity`)? Si no, rechaza la compra por inventario agotado.
- * **Blindaje de precio**: Multiplica la cantidad por el precio oficial traído de MongoDB (`game.price()`), ignorando cualquier precio manipulado por el usuario.
- 6. Si todo es correcto, genera claves digitales únicas (`STEAM-XXXX`) y guarda la orden en la base de datos SQL H2.
-
----
-
-## 3. Guía Pedagógica: ¿Cómo viaja una petición dentro de `sales-service`?
-
-Imagina que este microservicio funciona exactamente igual a un **restaurante de alta cocina**:
+### Diagrama de Enrutamiento y Resolucion de Nombres
 
 ```
-[Cliente HTTP / Postman / Frontend]
- 1. Envía JSON de compra al puerto 8081
- 
-
- 1. CAPA WEB: SaleOrderController 
- El "Mesero": Recibe la comanda del cliente. 
- Verifica con @Valid que no venga vacía o con letras raras
- y de inmediato se la entrega a la cocina (Service). 
-
- 2. Llama al método createOrder()
- 
-
- 2. CAPA NEGOCIO: SaleOrderService 
- El "Chef": Tiene las recetas y las reglas del negocio. 
- - Llama a CatalogClient (OpenFeign) para pedir precio real
- - Verifica existencias en inventario 
- - Multiplica precios x cantidades con BigDecimal 
- - Genera claves digitales únicas estilo STEAM-XXXX 
- - Maneja la transacción con @Transactional (Rollback) 
-
- 3. Llama a orderRepository.save()
- 
-
- 3. CAPA DATOS: SaleOrderRepository 
- La "Despensa": Es la única autorizada para tocar la base 
- de datos. Genera las instrucciones SQL automáticamente. 
-
- 4. Sentencias SQL Hibernate
- 
-
- 4. BASE DE DATOS: H2 SQL (Tablas sale_orders y order_items) 
-
+                                  +-----------------------------+
+                                  |        EUREKA SERVER        |
+                                  |   (Directorio Central)      |
+                                  |         Puerto 8761         |
+                                  +--------------+--------------+
+                                                 |
+                          +----------------------+----------------------+
+                          | 1. Heartbeat / Registro                     | 1. Heartbeat / Registro
+                          |    "SALES-SERVICE en 8081"                  |    "CATALOG-SERVICE en 8082"
+                          v                                             v
+            +---------------------------+                 +---------------------------+
+            |       SALES-SERVICE       |                 |      CATALOG-SERVICE      |
+            |        Puerto 8081        |                 |        Puerto 8082        |
+            |     Base de Datos H2      |                 |    Base de Datos Mongo    |
+            |   (Transacciones SQL)     |                 |     (Catalogo NoSQL)      |
+            +-------------+-------------+                 +-------------+-------------+
+                          |                                             ^
+                          | 2. Peticion HTTP declarativa OpenFeign      |
+                          |    GET http://catalog-service/api/games/{id}|
+                          +---------------------------------------------+
 ```
 
 ---
 
-## 4. Anatomía Detallada de Clases (Clase por Clase)
+### Mapeo 1: Descubrimiento y Registro con `eureka-server` (Puerto 8761)
+
+* **Archivo de configuracion**: `src/main/resources/application.properties`
+  ```properties
+  spring.application.name=sales-service
+  server.port=8081
+  eureka.client.service-url.defaultZone=http://localhost:8761/eureka/
+  ```
+* **Punto de activacion en codigo Java**: `SalesServiceApplication.java`
+  ```java
+  @SpringBootApplication
+  @EnableDiscoveryClient  // Activa el registro dinamico con Eureka Server
+  @EnableFeignClients     // Activa el escaneo y construccion de clientes Feign
+  public class SalesServiceApplication { ... }
+  ```
+* **Mecanismo de operacion**:
+  1. Al arrancar en el puerto `8081`, el cliente de Eureka emite un registro HTTP hacia `http://localhost:8761/eureka/apps/SALES-SERVICE`.
+  2. Emite latidos de salud (*heartbeats*) cada 30 segundos para confirmar disponibilidad.
+  3. Descarga la cache local con la tabla de localizacion de todos los demas microservicios activos.
+
+---
+
+### Mapeo 2: Comunicacion Declarativa Sincrona con `catalog-service` (Puerto 8082)
+
+`sales-service` **NO** tiene codificadas direcciones IP fijas ni puertos como `localhost:8082`. La resolucion es completamente dinamica a traves del nombre de servicio registrado en Eureka.
+
+#### A. Interfaz del Cliente Feign: `CatalogClient.java`
+* **Ubicacion**: `src/main/java/com/jonathan/gamestore/sales/client/CatalogClient.java`
+* **Codigo de Mapeo**:
+  ```java
+  @FeignClient(name = "catalog-service")
+  public interface CatalogClient {
+
+      @GetMapping("/api/games/{id}")
+      GameResponse getGameById(@PathVariable("id") String id);
+  }
+  ```
+* **Explicacion tecnica del mapeo**:
+  * `@FeignClient(name = "catalog-service")`: Le indica a Spring Cloud que resuelva el host `catalog-service` consultando el directorio de Eureka. Si existen 3 instancias de catalogo, Spring Cloud LoadBalancer reparte el trafico entre ellas.
+  * `@GetMapping("/api/games/{id}")`: Mapea directamente contra el endpoint expuesto por `GameController` en `catalog-service`.
+  * `@PathVariable("id") String id`: Envia el ObjectId de 24 caracteres de MongoDB.
+
+#### B. Molde de Deserializacion Remota: `GameResponse.java`
+* **Ubicacion**: `src/main/java/com/jonathan/gamestore/sales/dto/GameResponse.java`
+* **Funcion**:
+  Dado que `sales-service` no tiene acceso a las clases de `catalog-service`, este Java `record` replica el contrato JSON devuelto por MongoDB:
+  ```java
+  public record GameResponse(
+          String id,
+          String title,
+          String description,
+          String genre,
+          BigDecimal price,     // Precio oficial validado
+          Integer stock,        // Existencias reales en almacen
+          List<String> platforms,
+          Boolean active        // Estado de publicacion
+  ) {}
+  ```
+
+#### C. Inyeccion y Orquestacion en la Capa de Negocio: `SaleOrderService.java`
+* **Ubicacion**: `src/main/java/com/jonathan/gamestore/sales/service/SaleOrderService.java`
+* **Flujo de validacion y blindaje de precios**:
+  ```java
+  // Inyeccion automatica del cliente Feign
+  private final CatalogClient catalogClient;
+
+  @Transactional
+  public SaleOrder createOrder(SaleOrderRequest request) {
+      for (OrderItemRequest itemReq : request.items()) {
+          // LLAMADA REMOTA AL MICROSERVICIO DE CATALOGO:
+          GameResponse game = catalogClient.getGameById(itemReq.gameId());
+
+          // 1. Validacion de existencia y estado activo
+          if (game == null || !Boolean.TRUE.equals(game.active())) {
+              throw new IllegalArgumentException("Videojuego inactivo o inexistente");
+          }
+
+          // 2. Validacion de existencias en tiempo real
+          if (game.stock() == null || game.stock() < itemReq.quantity()) {
+              throw new IllegalArgumentException("Stock insuficiente para: " + game.title());
+          }
+
+          // 3. BLINDAJE DE PRECIO (Anti-Fraude):
+          // Se toma el precio oficial de MongoDB (game.price()), ignorando datos alterados del cliente
+          BigDecimal officialPrice = game.price();
+          ...
+      }
+  }
+  ```
+
+---
+
+## 3. Arquitectura Interna por Capas (Clean Architecture)
+
+El flujo interno de procesamiento en `sales-service` desacopla la recepcion, la logica y la persistencia:
+
+```
+[Peticion HTTP entrante desde Cliente / Postman / Frontend]
+                 | 1. POST /api/orders
+                 v
++-------------------------------------------------------------+
+| 1. CAPA CONTROLADOR: SaleOrderController                    |
+|    - Recibe el payload JSON                                 |
+|    - Ejecuta validaciones estructurales (@Valid)            |
+|    - Delega el procesamiento a la capa de servicio          |
++-----------------------------+-------------------------------+
+                               | 2. createOrder(request)
+                               v
++-------------------------------------------------------------+
+| 2. CAPA SERVICIO: SaleOrderService                          |
+|    - Invoca CatalogClient (OpenFeign)                       |
+|    - Valida existencia, estado activo y stock               |
+|    - Calcula el importe oficial con BigDecimal              |
+|    - Genera las claves digitales (STEAM-UUID)               |
+|    - Garantiza atomicidad transaccional (@Transactional)    |
++-----------------------------+-------------------------------+
+                               | 3. orderRepository.save(order)
+                               v
++-------------------------------------------------------------+
+| 3. CAPA REPOSITORIO: SaleOrderRepository                    |
+|    - Interfaz Spring Data JPA                               |
+|    - Genera sentencias SQL automaticas                      |
++-----------------------------+-------------------------------+
+                               | 4. Persistencia relacional
+                               v
++-------------------------------------------------------------+
+| 4. BASE DE DATOS: H2 SQL (Tablas sale_orders y order_items) |
++-------------------------------------------------------------+
+```
+
+---
+
+## 4. Anatomia Detallada de Clases y Componentes
 
 ### Paquete: `com.jonathan.gamestore.sales`
 
 #### `SalesServiceApplication.java`
-* **¿Qué es?**: La puerta principal de entrada y punto de arranque del microservicio.
-* **Anotaciones clave**:
- * `@SpringBootApplication`: Enciende todo el ecosistema de Spring (inyección de dependencias, autoconfiguración, Tomcat interno).
- * `@EnableDiscoveryClient`: Registra la aplicación en Eureka Server (`http://localhost:8761`) con el nombre `SALES-SERVICE`.
- * `@EnableFeignClients`: Enciende el motor de OpenFeign para escanear y generar clientes HTTP automáticos hacia otros microservicios.
-* **¿Quién la manda a llamar?**: El comando de ejecución de consola (`java -jar`) o el botón Play de IntelliJ.
+* Punto de entrada de Spring Boot.
+* Habilita `@SpringBootApplication`, `@EnableDiscoveryClient` y `@EnableFeignClients`.
 
 ---
 
-### Paquete: `com.jonathan.gamestore.sales.client` (Comunicación entre Microservicios)
+### Paquete: `com.jonathan.gamestore.sales.client`
 
-#### `CatalogClient.java` (Interfaz Feign)
-* **¿Qué es?**: Cliente HTTP declarativo que permite llamar a `catalog-service` sin escribir código de conexión manual.
-* **Anotaciones clave**:
- * `@FeignClient(name = "catalog-service")`: Le dice a Spring que busque en Eureka el microservicio llamado `catalog-service`.
- * `@GetMapping("/api/games/{id}")`: Mapea el método `getGameById(String id)` al endpoint de MongoDB del catálogo.
+#### `CatalogClient.java`
+* Interfaz declarativa de OpenFeign que implementa la comunicacion HTTP hacia `catalog-service`.
 
 ---
 
 ### Paquete: `com.jonathan.gamestore.sales.config`
 
 #### `H2Config.java`
-* **¿Qué es?**: Configuración del panel visual de la base de datos H2 en memoria.
-* **¿Por qué existe?**: En versiones modernas de Spring Boot (Jakarta EE), la consola `/h2-console` requiere registrar manualmente el servlet `JakartaWebServlet` para poder ver las tablas desde el navegador en `http://localhost:8081/h2-console`.
+* Registra el servlet `JakartaWebServlet` para habilitar el acceso a la consola de base de datos H2 en `http://localhost:8081/h2-console`.
 
 ---
 
-### Paquete: `com.jonathan.gamestore.sales.model` (Entidades de Base de Datos)
+### Paquete: `com.jonathan.gamestore.sales.model` (Entidades de Dominio)
 
 #### `OrderStatus.java` (Enum)
-* **¿Qué es?**: Catálogo fijo de opciones válidas para el estado de una compra (`PENDING`, `COMPLETED`, `CANCELLED`). Evita errores tipográficos.
+* Catalogo formal de estados de orden: `PENDING`, `COMPLETED`, `CANCELLED`.
 
-#### `SaleOrder.java` (Entidad Padre)
-* **¿Qué es?**: La tabla principal en SQL (`sale_orders`). Representa la factura o ticket de compra general.
-* **Campos clave**:
- * `@Id @GeneratedValue`: Clave primaria autoincremental (1, 2, 3...).
- * `userId`: Identificador del usuario que compró.
- * `totalAmount`: Importe total a pagar calculado en servidor con `BigDecimal`.
- * `status`: Estado actual (`PENDING`, etc.).
- * `createdAt`: Fecha y hora de creación automática (`@PrePersist`).
- * `items`: Lista de productos contenidos en esta orden (`List<OrderItem>`).
-* **Relación `@OneToMany(cascade = CascadeType.ALL, orphanRemoval = true)`**:
- * Significa: *"Una orden tiene muchos ítems"*.
- * `CascadeType.ALL`: Al guardar la orden en Java, Hibernate automáticamente guarda todos sus ítems en la tabla hija. Si borras la orden, se borran sus ítems en cascada.
-* **Método `addItem(OrderItem item)`**: Método ayudante que asegura la relación bidireccional asignando este objeto orden como padre del ítem.
+#### `SaleOrder.java` (Entidad Raiz)
+* Mapea la tabla `sale_orders`.
+* Atributos: `id` (autoincremental), `userId`, `totalAmount`, `status`, `createdAt`.
+* Relacion `@OneToMany(cascade = CascadeType.ALL, orphanRemoval = true)`: Garantiza que los items se guarden o eliminen conjuntamente con la orden.
 
-#### `OrderItem.java` (Entidad Hija)
-* **¿Qué es?**: La tabla detalle en SQL (`order_items`). Representa cada juego individual dentro del carrito de compra.
-* **Campos clave**:
- * `gameId`: Identificador del juego en el catálogo (de tipo `String` para ser compatible con los ObjectIds de 24 caracteres de MongoDB).
- * `gameTitle`: Nombre del juego para conservar el histórico (ej: *"Elden Ring"*).
- * `unitPrice`: Precio oficial al que se vendió en ese momento exacto.
- * `quantity`: Número de copias compradas.
- * `digitalKey`: La clave secreta de activación generada (`STEAM-XXXX`).
- * `order`: Referencia a la orden padre (`@ManyToOne` con clave foránea `order_id`).
- * `@JsonIgnore`: Evita que el serializador JSON entre en un ciclo infinito de recursión (Orden -> Ítem -> Orden -> Ítem...).
+#### `OrderItem.java` (Entidad Detalle)
+* Mapea la tabla `order_items`.
+* Atributos: `gameId` (de tipo `String` compatible con ObjectIds de MongoDB), `gameTitle`, `unitPrice`, `quantity`, `digitalKey`.
+* Relacion `@ManyToOne`: Referencia a la orden padre mediante clave foranea `order_id`.
 
 ---
 
-### Paquete: `com.jonathan.gamestore.sales.dto` (Data Transfer Objects)
+### Paquete: `com.jonathan.gamestore.sales.dto`
 
-#### `OrderItemRequest.java` (Record)
-* **¿Qué es?**: Molde de datos que define qué información envía el cliente por cada juego solicitado (`gameId`, `gameTitle`, `unitPrice`, `quantity`).
-* **Validaciones**: Anotado con `@NotBlank`, `@NotNull`, `@DecimalMin` y `@Positive`.
+#### `SaleOrderRequest.java`
+* Record que recibe los datos de compra (`userId`, `List<OrderItemRequest> items`). Omite deliberadamente `totalAmount` por seguridad.
 
-#### `SaleOrderRequest.java` (Record)
-* **¿Qué es?**: Molde de datos del cuerpo de la petición de compra (`userId`, `items`).
-* **Regla de oro de seguridad**: ¡Este DTO **NO** contiene el campo `totalAmount`! El cliente jamás puede decidir cuánto va a pagar.
+#### `OrderItemRequest.java`
+* Record con los articulos solicitados (`gameId`, `quantity`, `unitPrice`).
 
-#### `GameResponse.java` (Record)
-* **¿Qué es?**: Molde para deserializar la respuesta JSON enviada por `catalog-service` a través de OpenFeign (`id`, `title`, `price`, `stock`, `active`, etc.).
+#### `GameResponse.java`
+* Record para almacenar la respuesta devuelta por `catalog-service`.
 
 ---
 
-### Paquete: `com.jonathan.gamestore.sales.repository` (Persistencia)
+### Paquete: `com.jonathan.gamestore.sales.repository`
 
 #### `SaleOrderRepository.java`
-* **¿Qué es?**: Interfaz que extiende de `JpaRepository<SaleOrder, Long>`.
-* **Consultas automáticas**: `save`, `findById`, `findAll` y `findByUserId(Long userId)` generadas en memoria por Spring Data JPA sin escribir SQL a mano.
+* Interfaz `JpaRepository<SaleOrder, Long>`. Expone consultas derivadas como `findByUserId(Long userId)`.
 
 ---
 
-### Paquete: `com.jonathan.gamestore.sales.service` (Lógica de Negocio)
+### Paquete: `com.jonathan.gamestore.sales.service`
 
 #### `SaleOrderService.java`
-* **¿Qué es?**: El cerebro de la aplicación donde residen las reglas comerciales y la integración con OpenFeign.
-* **Anotación `@Transactional`**: Si se produce un error de stock o un corte de red a mitad de camino, hace **Rollback** automático y la base de datos queda limpia.
-* **Métodos principales**:
- 1. `createOrder(SaleOrderRequest request)`:
- * Consulta a `CatalogClient` por cada juego en MongoDB.
- * Valida que el juego exista y esté activo (`active == true`).
- * Valida existencias en stock (`stock >= quantity`).
- * Blinda el precio usando el oficial de MongoDB (`game.price()`).
- * Genera una clave digital única (`STEAM-` + UUID).
- * Calcula subtotales y total con `BigDecimal`.
- * Guarda la orden y sus ítems en cascada.
- 2. `getAllOrders()`, `getOrderById(id)`, `getOrdersByUserId(userId)`, `updateOrder(id, request)`, `deleteOrder(id)`.
+* Orquestador central de la logica de negocio, calculos monetarios e invocaciones a OpenFeign.
 
 ---
 
-### Paquete: `com.jonathan.gamestore.sales.controller` (Capa Web REST)
+### Paquete: `com.jonathan.gamestore.sales.controller`
 
 #### `SaleOrderController.java`
-* **¿Qué es?**: El "Mesero" que atiende peticiones HTTP en `/api/orders`.
-* **Endpoints**:
- * `POST /api/orders`: Crea una nueva orden de venta validada contra el catálogo.
- * `GET /api/orders`: Lista todas las órdenes.
- * `GET /api/orders/{id}`: Busca una orden por su ID.
- * `GET /api/orders/user/{userId}`: Historial de compras de un usuario.
- * `PUT /api/orders/{id}`: Actualiza una orden.
- * `DELETE /api/orders/{id}`: Elimina una orden.
+* Controlador REST expuesto en `/api/orders`.
 
 ---
 
-### Paquete: `com.jonathan.gamestore.sales.exception` (Manejo de Errores)
+### Paquete: `com.jonathan.gamestore.sales.exception`
 
-#### `ErrorResponse.java` (Record)
-* **¿Qué es?**: Estructura estándar y profesional para reportar errores en formato JSON (`status`, `error`, `message`, `validationErrors`, `timestamp`).
+#### `ErrorResponse.java`
+* Record que estandariza la estructura de error HTTP devuelta al cliente (`status`, `error`, `message`, `validationErrors`, `timestamp`).
 
 #### `GlobalExceptionHandler.java`
-* **¿Qué es?**: Interceptor global con `@RestControllerAdvice`.
-* **Excepciones controladas**:
- * `MethodArgumentNotValidException`: Errores de validación de campos con HTTP 400.
- * `IllegalArgumentException`: Reglas de negocio rotas (stock insuficiente, juego inactivo) con HTTP 400.
- * `FeignException.NotFound`: Cuando el juego no existe en `catalog-service` devolviendo HTTP 404 claro.
+* Interceptor `@RestControllerAdvice` que captura `MethodArgumentNotValidException`, `IllegalArgumentException` y fallos 404 de OpenFeign.
 
 ---
 
-## 5. Catálogo de Endpoints RESTful (`/api/orders`)
+## 5. Catalogo Completo de Endpoints RESTful (`/api/orders`)
 
-| Método | Endpoint | Descripción | Código Éxito | Códigos Error |
-| :--- | :--- | :--- | :--- | :--- |
-| `POST` | `/api/orders` | Crea una nueva orden de venta validando precio y stock en `catalog-service` | `201 Created` | `400 Bad Request`, `404 Not Found` |
-| `GET` | `/api/orders` | Lista todas las órdenes registradas en el sistema | `200 OK` | `500 Internal Error` |
-| `GET` | `/api/orders/{id}` | Busca una orden por su ID numérico | `200 OK` | `404 Not Found` |
-| `GET` | `/api/orders/user/{userId}` | Obtiene todas las compras realizadas por un usuario | `200 OK` | `200 OK (vacío)` |
-| `PUT` | `/api/orders/{id}` | Modifica una orden existente recalculando con el catálogo | `200 OK` | `400 Bad Request`, `404 Not Found` |
-| `DELETE` | `/api/orders/{id}` | Elimina una orden y sus ítems en cascada | `204 No Content` | `404 Not Found` |
+| Operacion | Metodo HTTP | Ruta Endpoint | Descripcion del Recurso | Codigo Exito | Codigos Falla |
+| :--- | :---: | :--- | :--- | :---: | :---: |
+| **CREATE** | `POST` | `/api/orders` | Registra una orden validando precio y stock en `catalog-service` | `201 Created` | `400 Bad Request`, `404 Not Found` |
+| **READ (All)** | `GET` | `/api/orders` | Lista todas las ordenes emitidas en el sistema | `200 OK` | `500 Internal Error` |
+| **READ (ById)**| `GET` | `/api/orders/{id}` | Recupera el detalle de una orden por su identificador numerico | `200 OK` | `404 Not Found` |
+| **READ (User)**| `GET` | `/api/orders/user/{userId}` | Filtra las ordenes correspondientes a un usuario | `200 OK` | - |
+| **UPDATE** | `PUT` | `/api/orders/{id}` | Actualiza una orden recalculando montos contra el catalogo | `200 OK` | `404 Not Found`, `400 Bad Request` |
+| **DELETE** | `DELETE` | `/api/orders/{id}` | Elimina una orden y sus detalles asociados en cascada | `204 No Content` | `404 Not Found` |
 
 ---
 
-## 6. Guía de Pruebas Rápidas con cURL / PowerShell
+## 6. Guia Exhaustiva de Pruebas (PowerShell y cURL)
 
-### Crear una Orden de Compra:
+### 1. Registrar una Orden de Compra (Validada via OpenFeign)
 ```powershell
 Invoke-RestMethod -Uri "http://localhost:8081/api/orders" -Method Post -ContentType "application/json" -Body '{
- "userId": 101,
- "items": [
- {
- "gameId": "650c1f1e9b1d8b2bad000001",
- "gameTitle": "Elden Ring",
- "unitPrice": 59.99,
- "quantity": 1
- }
- ]
+  "userId": 101,
+  "items": [
+    {
+      "gameId": "650c1f1e9b1d8b2bad000001",
+      "gameTitle": "Elden Ring",
+      "unitPrice": 59.99,
+      "quantity": 2
+    }
+  ]
 }' | ConvertTo-Json -Depth 5
 ```
+*Respuesta exitosa:* Retorna la orden con estado `PENDING`, el `totalAmount` calculado oficialmente y las claves digitales `STEAM-XXXX` autogeneradas.
 
-### Consultar todas las Órdenes:
+---
+
+### 2. Consultar todas las ordenes
 ```powershell
 Invoke-RestMethod -Uri "http://localhost:8081/api/orders" -Method Get | ConvertTo-Json -Depth 5
 ```
+
+---
+
+### 3. Consultar una orden especifica por ID
+```powershell
+Invoke-RestMethod -Uri "http://localhost:8081/api/orders/1" -Method Get | ConvertTo-Json -Depth 5
+```
+
+---
+
+### 4. Consultar ordenes por ID de Usuario
+```powershell
+Invoke-RestMethod -Uri "http://localhost:8081/api/orders/user/101" -Method Get | ConvertTo-Json -Depth 5
+```
+
+---
+
+### 5. Eliminar una orden existente
+```powershell
+Invoke-WebRequest -Uri "http://localhost:8081/api/orders/1" -Method Delete
+```
+
+---
+
+## 7. Instrucciones de Ejecucion Optimizada (8 GB RAM Setup)
+
+```powershell
+cd C:\Users\ErickJimz\IdeaProjects\sales-service
+.\mvnw.cmd clean package -DskipTests
+java -Xmx300m -jar .\target\sales-service-0.0.1-SNAPSHOT.jar
+```
+* **Puerto configurado:** `8081`
+* **Consola H2 Database:** `http://localhost:8081/h2-console`
+* **JDBC URL:** `jdbc:h2:mem:salesdb`
