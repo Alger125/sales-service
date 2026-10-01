@@ -1,5 +1,7 @@
 package com.jonathan.gamestore.sales.exception;
 
+import feign.FeignException;
+
 import java.time.LocalDateTime;
 import java.util.Map;
 
@@ -27,5 +29,5 @@ public record ErrorResponse(
  String message,
  Map<String, String> validationErrors,
  LocalDateTime timestamp
-) {
+){
 }

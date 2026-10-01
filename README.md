@@ -1,471 +1,294 @@
 # Sales Service
 
-> 🎮 **Microservicio de Ventas, Órdenes de Compra y Generación de Claves Digitales**  
-> Construido sobre una arquitectura de microservicios con **Spring Cloud**, **OpenFeign** y **Eureka Discovery**.
+> Microservicio de **ventas, órdenes de compra y generación de claves digitales** para una tienda de videojuegos, construido sobre una arquitectura de microservicios con Spring Cloud.
 
-<div align="center">
-
-![Java](https://img.shields.io/badge/Java-17-orange?style=flat-square&logo=openjdk)
-![Spring Boot](https://img.shields.io/badge/Spring%20Boot-4.1.1-brightgreen?style=flat-square&logo=spring)
-![Spring Cloud](https://img.shields.io/badge/Spring%20Cloud-2025.1.3-blue?style=flat-square&logo=spring)
-![H2 Database](https://img.shields.io/badge/H2%20Database-SQL-red?style=flat-square&logo=database)
-![Build](https://img.shields.io/badge/Build-Maven-red?style=flat-square&logo=apache-maven)
-![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)
-
-[Ver Ecosistema](#-ecosistema-de-microservicios) • [Quick Start](#-quick-start) • [API Reference](#-referencia-de-la-api) • [Troubleshooting](#-solución-de-problemas)
-
-</div>
+![Java](https://img.shields.io/badge/Java-17-orange)
+![Spring Boot](https://img.shields.io/badge/Spring%20Boot-4.1.1-brightgreen)
+![Spring Cloud](https://img.shields.io/badge/Spring%20Cloud-2025.1.3-blue)
+![Build](https://img.shields.io/badge/Build-Maven-red)
 
 ---
 
-## 📋 Tabla de Contenidos
+## Tabla de contenido
 
-- [🎯 Resumen del Proyecto](#-resumen-del-proyecto)
-- [🏗️ Arquitectura](#️-arquitectura)
-- [🌐 Ecosistema de Microservicios](#-ecosistema-de-microservicios)
-- [🔄 Flujo de Una Compra](#-flujo-de-una-compra-paso-a-paso)
-- [📂 Estructura del Proyecto](#-estructura-del-proyecto)
-- [📊 Modelo de Datos](#-modelo-de-datos)
-- [🚀 Quick Start](#-quick-start)
-- [📡 Referencia de la API](#-referencia-de-la-api)
-- [✅ Guía de Pruebas](#-guía-de-pruebas)
-- [🐛 Solución de Problemas](#-solución-de-problemas)
-- [🔮 Mejoras Futuras](#-mejoras-futuras)
-- [📝 Licencia](#-licencia)
+1. [Resumen del proyecto](#1-resumen-del-proyecto)
+2. [Stack tecnológico y por qué se eligió](#2-stack-tecnológico-y-por-qué-se-eligió)
+3. [Ecosistema de microservicios](#3-ecosistema-de-microservicios)
+4. [Decisiones de arquitectura](#4-decisiones-de-arquitectura)
+5. [Arquitectura interna por capas](#5-arquitectura-interna-por-capas)
+6. [Flujo de una compra, paso a paso](#6-flujo-de-una-compra-paso-a-paso)
+7. [Estructura del proyecto](#7-estructura-del-proyecto)
+8. [Modelo de datos](#8-modelo-de-datos)
+9. [Referencia de la API](#9-referencia-de-la-api)
+10. [Manejo de errores](#10-manejo-de-errores)
+11. [Configuración](#11-configuración)
+12. [Instalación y ejecución](#12-instalación-y-ejecución)
+13. [Guía de pruebas](#13-guía-de-pruebas)
+14. [Solución de problemas](#14-solución-de-problemas)
+15. [Mejoras futuras](#15-mejoras-futuras)
 
 ---
 
-## 🎯 Resumen del Proyecto
+## 1. Resumen del proyecto
 
-`sales-service` es el **núcleo de procesamiento de ventas** de una tienda de videojuegos distribuida. Maneja:
+`sales-service` es el microservicio responsable de todo lo que ocurre **desde que un usuario decide comprar** hasta que recibe su clave digital:
 
 | Responsabilidad | Descripción |
 |---|---|
-| 📦 Registro de órdenes | Crea y almacena órdenes de compra con sus artículos |
-| ✅ Validación contra catálogo | Consulta `catalog-service` para confirmar existencia, estado activo y stock |
-| 💰 Cálculo seguro del total | Usa el **precio oficial del catálogo**, **nunca** el del cliente (blindaje anti-fraude) |
-| 🔑 Generación de claves digitales | Emite claves en formato `STEAM-XXXX` por cada compra |
-| 📋 Consulta y administración | Lista, busca, actualiza y elimina órdenes |
+| Registro de órdenes | Crea y almacena órdenes de compra con sus artículos. |
+| Validación contra el catálogo | Consulta a `catalog-service` para confirmar que el juego existe, está activo y tiene stock. |
+| Cálculo seguro del total | Calcula el monto usando el **precio oficial del catálogo**, nunca el que envía el cliente. |
+| Generación de claves digitales | Emite una clave por compra (formato `STEAM-XXXX`). |
+| Consulta y administración | Lista, busca, actualiza y elimina órdenes. |
 
-**¿Por qué existe como servicio independiente?**
-
-Las ventas tienen ritmo de carga, reglas de negocio y requisitos de consistencia distintos al catálogo. Separarlas permite **escalarlas, desplegarlas y mantenerlas** sin afectar al resto del sistema.
+**¿Por qué existe como servicio independiente?** Las ventas tienen un ritmo de carga, reglas de negocio y requisitos de consistencia distintos a los del catálogo. Separarlas permite escalarlas, desplegarlas y mantenerlas sin afectar al resto del sistema.
 
 ---
 
-## 🏗️ Arquitectura
+## 2. Stack tecnológico y por qué se eligió
 
-### Arquitectura Interna por Capas (Clean Architecture)
+| Tecnología | Versión | Función | ¿Por qué se usa? |
+|---|---|---|---|
+| Java | 17 | Lenguaje | Versión LTS con soporte de `record`, ideal para DTOs inmutables. |
+| Spring Boot | 4.1.1 | Framework base | Configuración automática y servidor embebido: menos código repetitivo. |
+| Spring Data JPA | (BOM de Boot) | Persistencia | Genera consultas SQL a partir de interfaces, evitando JDBC manual. |
+| H2 Database | (BOM de Boot) | Base de datos SQL en memoria | Cero instalación; perfecta para desarrollo y demos. |
+| Spring Cloud Netflix Eureka Client | 2025.1.3 | Descubrimiento de servicios | Permite localizar otros servicios por nombre, sin IPs fijas. |
+| Spring Cloud OpenFeign | 2025.1.3 | Cliente HTTP declarativo | Se consume otra API escribiendo solo una interfaz. |
+| Spring Cloud Config Client | 2025.1.3 | Configuración centralizada | Preparado para externalizar propiedades. |
+| Spring Kafka | (BOM de Boot) | Mensajería asíncrona | Preparado para publicar eventos (ver [mejoras futuras](#15-mejoras-futuras)). |
+| Bean Validation | (BOM de Boot) | Validación de entrada | Rechaza datos inválidos antes de llegar a la lógica de negocio. |
+| Lombok | (BOM de Boot) | Reducción de código repetitivo | Genera getters, setters y constructores en tiempo de compilación. |
+| Maven Wrapper | — | Construcción | Cualquiera compila con la misma versión de Maven, sin instalarla. |
 
-```mermaid
-graph TB
-    subgraph Cliente["🖥️ Cliente (Postman/Frontend)"]
-        REQ["POST /api/orders<br/>Usuario compra 2 videojuegos"]
-    end
-
-    subgraph Controlador["1️⃣ CAPA CONTROLADOR"]
-        CTRL["SaleOrderController<br/>✓ Recibe JSON<br/>✓ Valida estructura @Valid<br/>✓ Delega al servicio"]
-    end
-
-    subgraph Servicio["2️⃣ CAPA SERVICIO"]
-        SVC["SaleOrderService<br/>✓ Llamadas OpenFeign<br/>✓ Validaciones de negocio<br/>✓ Cálculo de montos<br/>✓ Generación de claves<br/>✓ @Transactional"]
-    end
-
-    subgraph Integracion["🔗 INTEGRACIÓN CON OTROS SERVICIOS"]
-        FEIGN["CatalogClient<br/>OpenFeign<br/>Consulta precio,<br/>stock y estado"]
-        EUREKA["Eureka Service Discovery<br/>Resolución dinámica<br/>catalog-service:8082"]
-    end
-
-    subgraph Persistencia["3️⃣ CAPA REPOSITORIO"]
-        REPO["SaleOrderRepository<br/>Spring Data JPA<br/>Genera SQL automático"]
-    end
-
-    subgraph DB["4️⃣ BASE DE DATOS"]
-        H2["H2 SQL<br/>sale_orders<br/>order_items"]
-    end
-
-    REQ -->|1. POST| CTRL
-    CTRL -->|2. createOrder| SVC
-    SVC -->|3. Validar| FEIGN
-    FEIGN -->|¿Dónde está?| EUREKA
-    EUREKA -->|localhost:8082| FEIGN
-    SVC -->|4. save| REPO
-    REPO -->|5. INSERT| H2
-
-    style Cliente fill:#e1f5ff
-    style Controlador fill:#fff3e0
-    style Servicio fill:#f3e5f5
-    style Integracion fill:#e8f5e9
-    style Persistencia fill:#fce4ec
-    style DB fill:#f1f8e9
-```
-
-### Decisiones de Arquitectura Clave
-
-| Patrón | Justificación |
-|---|---|
-| **Database-per-Service** | Aislamiento total: si el catálogo falla, las ventas siguen operativas. Cada equipo controla su esquema. |
-| **SQL para Ventas (H2/JPA)** | Transacciones monetarias requieren propiedades **ACID** estrictas. Una orden debe guardarse completa o no guardarse. |
-| **NoSQL para Catálogo (MongoDB)** | Documentos flexibles: juegos con atributos variables (plataformas, géneros, etc.). |
-| **Escalabilidad Independiente** | En Black Friday, se lanzan N instancias de `sales-service` sin gastar recursos en el catálogo. |
-| **Eureka Service Discovery** | Sin direcciones IP fijas. Si hay 3 instancias de catálogo, Eureka reparte carga automáticamente. |
-| **OpenFeign + Balanceo de Carga** | Interfaz declarativa, integración nativa con Eureka, código más legible. |
-| **Blindaje de Precios (Anti-Fraude)** | El cliente NO controla el precio. El servidor toma el precio oficial de MongoDB, ignorando datos alterados. |
+> **Nota sobre versiones:** las versiones de Spring Boot y Spring Cloud se definen en el `pom.xml`. Spring Cloud se importa mediante un BOM (`dependencyManagement`) para garantizar que todas sus librerías sean compatibles entre sí.
 
 ---
 
-## 🌐 Ecosistema de Microservicios
+## 3. Ecosistema de microservicios
 
-Este servicio es **una pieza de un sistema distribuido** formado por tres repositorios independientes:
+Este servicio es una pieza de un sistema distribuido formado por tres repositorios:
 
-```mermaid
-graph LR
-    EUR["🎯 eureka-server<br/>:8761<br/>Service Discovery"]
-    SALES["💰 sales-service<br/>:8081<br/>H2 SQL"]
-    CAT["📚 catalog-service<br/>:8082<br/>MongoDB"]
-
-    SALES -->|"1. Registro &<br/>Heartbeat"| EUR
-    CAT -->|"1. Registro &<br/>Heartbeat"| EUR
-    SALES -->|"2. GET /api/games/{id}<br/>(OpenFeign + LB)"| CAT
-
-    style EUR fill:#fff9c4
-    style SALES fill:#b3e5fc
-    style CAT fill:#c8e6c9
-```
-
-| Servicio | Puerto | BD | Rol | Repo |
+| Servicio | Puerto | Base de datos | Rol | Repositorio |
 |---|---|---|---|---|
-| **eureka-server** | `8761` | — | Directorio de servicios (Service Discovery) | [Alger125/eureka-server](https://github.com/Alger125/eureka-server) |
-| **catalog-service** | `8082` | MongoDB | Catálogo e inventario de videojuegos | [Alger125/catalog-service](https://github.com/Alger125/catalog-service) |
-| **sales-service** | `8081` | H2 (SQL) | Ventas y facturación *(este repo)* | ← Aquí estamos |
+| `eureka-server` | 8761 | — | Directorio de servicios (Service Discovery) | [Alger125/eureka-server](https://github.com/Alger125/eureka-server) |
+| `catalog-service` | 8082 | MongoDB | Catálogo e inventario de videojuegos | [Alger125/catalog-service](https://github.com/Alger125/catalog-service) |
+| `sales-service` | 8081 | H2 (SQL) | Ventas y facturación | *(este repositorio)* |
 
-### Comunicación Inter-Microservicios
+### Diagrama de comunicación
 
-#### Mapeo 1: Registro con Eureka
+```mermaid
+flowchart TB
+    EUR["Eureka Server<br/>:8761"]
+    SALES["Sales Service<br/>:8081<br/>H2 (SQL)"]
+    CAT["Catalog Service<br/>:8082<br/>MongoDB"]
 
-**Archivo:** `src/main/resources/application.properties`
-
-```properties
-spring.application.name=sales-service
-server.port=8081
-eureka.client.service-url.defaultZone=http://localhost:8761/eureka/
+    SALES -- "1. Registro y heartbeat" --> EUR
+    CAT -- "1. Registro y heartbeat" --> EUR
+    SALES -- "2. GET /api/games/{id}<br/>(OpenFeign)" --> CAT
 ```
 
-**Código:** `SalesServiceApplication.java`
-
-```java
-@SpringBootApplication
-@EnableDiscoveryClient      // Registro automático en Eureka
-@EnableFeignClients         // Escaneo de clientes Feign
-public class SalesServiceApplication { ... }
-```
-
-Al arrancar:
-1. Se registra bajo el nombre `SALES-SERVICE` en Eureka
-2. Emite heartbeats cada 30 segundos
-3. Descarga el registro de otros servicios activos
-
-#### Mapeo 2: Consulta al Catálogo con OpenFeign
-
-**Interfaz:** `CatalogClient.java`
-
-```java
-@FeignClient(name = "catalog-service")  // Resuelve dinámicamente via Eureka
-public interface CatalogClient {
-    @GetMapping("/api/games/{id}")
-    GameResponse getGameById(@PathVariable("id") String id);
-}
-```
-
-**DTO de Respuesta:** `GameResponse.java`
-
-```java
-public record GameResponse(
-    String id,
-    String title,
-    String description,
-    String genre,
-    BigDecimal price,        // ← Precio oficial validado
-    Integer stock,           // ← Stock en tiempo real
-    List<String> platforms,
-    Boolean active          // ← Estado de publicación
-) {}
-```
-
-**Orquestación en Servicio:** `SaleOrderService.java`
-
-```java
-@Transactional
-public SaleOrder createOrder(SaleOrderRequest request) {
-    for (OrderItemRequest itemReq : request.items()) {
-        // 1️⃣ LLAMADA REMOTA A CATÁLOGO
-        GameResponse game = catalogClient.getGameById(itemReq.gameId());
-        
-        // 2️⃣ VALIDACIÓN DE NEGOCIO
-        if (game == null || !Boolean.TRUE.equals(game.active())) {
-            throw new IllegalArgumentException("Videojuego inactivo o inexistente");
-        }
-        
-        // 3️⃣ VALIDACIÓN DE STOCK
-        if (game.stock() == null || game.stock() < itemReq.quantity()) {
-            throw new IllegalArgumentException("Stock insuficiente");
-        }
-        
-        // 4️⃣ BLINDAJE DE PRECIO (anti-fraude)
-        BigDecimal officialPrice = game.price();  // ← Usa precio de BD, no del cliente
-        // ... resto de lógica ...
-    }
-}
-```
+**Cómo leerlo:** ambos servicios se registran en Eureka al arrancar. Cuando `sales-service` necesita datos de un juego, le pregunta a Eureka dónde vive `catalog-service` y le hace la petición HTTP.
 
 ---
 
-## 🔄 Flujo de Una Compra (Paso a Paso)
+## 4. Decisiones de arquitectura
 
-Escenario: Un usuario compra 2 unidades de *Elden Ring* ($59.99 c/u)
+Esta sección explica **el porqué** de las decisiones más importantes.
+
+### 4.1 Base de datos propia por servicio (*Database-per-Service*)
+
+- `sales-service` tiene su propia base de datos. Ningún otro servicio accede directamente a sus tablas.
+- **Por qué:** si el catálogo se cae o está en mantenimiento, las ventas y su almacenamiento siguen funcionando. Además, cada equipo puede cambiar su esquema sin coordinarse con los demás.
+
+### 4.2 SQL para ventas, NoSQL para catálogo
+
+- **Ventas → SQL (H2/JPA):** manejan dinero y requieren propiedades **ACID** (Atomicidad, Consistencia, Aislamiento, Durabilidad). Una orden y sus artículos deben guardarse completos o no guardarse.
+- **Catálogo → MongoDB:** los juegos tienen atributos variables (plataformas, géneros, etc.) y se adaptan bien a documentos flexibles.
+
+### 4.3 Escalabilidad independiente
+
+En temporadas de alta demanda las compras pueden multiplicarse mientras el catálogo casi no cambia. Al estar separados, se pueden levantar varias instancias de `sales-service` sin gastar recursos en el catálogo.
+
+### 4.4 Descubrimiento de servicios (Eureka) en lugar de direcciones fijas
+
+- `sales-service` **no** conoce la dirección de `catalog-service`; solo conoce su nombre lógico.
+- **Por qué:** las direcciones cambian (contenedores, nuevas instancias, distintos entornos). Con Eureka, si hay tres instancias de catálogo, el balanceador de carga reparte el tráfico entre ellas automáticamente.
+
+### 4.5 OpenFeign en lugar de `RestTemplate` o `WebClient`
+
+- Se declara una interfaz y Spring genera la implementación HTTP.
+- **Por qué:** menos código, más legible, y se integra de forma nativa con Eureka y el balanceo de carga.
+
+### 4.6 Blindaje de precios (anti-fraude)
+
+- El cliente puede enviar un `unitPrice`, pero el servidor **lo ignora** y usa el precio que devuelve `catalog-service`.
+- **Por qué:** si el backend confiara en el precio del cliente, cualquiera podría comprar un juego de 59.99 por 0.01 alterando la petición. La fuente de verdad del precio es el catálogo.
+
+### 4.7 DTOs separados de las entidades
+
+- Las entidades (`SaleOrder`, `OrderItem`) representan la base de datos; los DTOs (`SaleOrderRequest`, `GameResponse`…) representan lo que entra y sale de la API.
+- **Por qué:** se evita exponer la estructura interna y se controla exactamente qué datos puede enviar el cliente (por ejemplo, el `totalAmount` **no** se acepta desde afuera).
+
+---
+
+## 5. Arquitectura interna por capas
+
+```mermaid
+flowchart TB
+    C["Cliente (Postman / Frontend)"]
+    CTRL["1. Controller<br/>SaleOrderController"]
+    SVC["2. Service<br/>SaleOrderService"]
+    FEIGN["CatalogClient<br/>(OpenFeign)"]
+    REPO["3. Repository<br/>SaleOrderRepository"]
+    DB[("4. H2<br/>sale_orders / order_items")]
+    CAT["catalog-service"]
+
+    C -->|"POST /api/orders"| CTRL
+    CTRL -->|"createOrder(request)"| SVC
+    SVC --> FEIGN --> CAT
+    SVC -->|"save(order)"| REPO --> DB
+```
+
+| Capa | Clase | Responsabilidad | Por qué está separada |
+|---|---|---|---|
+| Controller | `SaleOrderController` | Recibe HTTP, valida estructura (`@Valid`), delega. | Solo "habla HTTP"; no contiene reglas de negocio. |
+| Service | `SaleOrderService` | Reglas de negocio, cálculo de montos, llamadas a Feign, transacciones. | La lógica se puede probar sin levantar un servidor web. |
+| Repository | `SaleOrderRepository` | Acceso a datos con Spring Data JPA. | Aísla el SQL del resto del código. |
+| Client | `CatalogClient` | Contrato HTTP hacia `catalog-service`. | Si el catálogo cambia, solo se toca este punto. |
+
+---
+
+## 6. Flujo de una compra, paso a paso
+
+Este es el recorrido completo cuando un usuario compra 2 unidades de *Elden Ring*:
 
 ```mermaid
 sequenceDiagram
     autonumber
-    participant User as 👤 Usuario
-    participant Sales as 💰 sales-service
-    participant Eureka as 🎯 eureka
-    participant Catalog as 📚 catalog-service
-    participant MongoDB as 🗄️ MongoDB
+    participant U as Usuario
+    participant S as sales-service
+    participant E as eureka-server
+    participant C as catalog-service
+    participant M as MongoDB
 
-    User->>Sales: POST /api/orders (gameId, qty: 2)
-    activate Sales
-    
-    Sales->>Eureka: ¿Dónde está catalog-service?
-    activate Eureka
-    Eureka-->>Sales: localhost:8082
-    deactivate Eureka
-    
-    Sales->>Catalog: GET /api/games/{gameId}
-    activate Catalog
-    Catalog->>MongoDB: findById()
-    activate MongoDB
-    MongoDB-->>Catalog: Game Document
-    deactivate MongoDB
-    Catalog-->>Sales: 200 OK (price: 59.99, stock: 10)
-    deactivate Catalog
-    
-    Note over Sales: ✓ Stock (10) >= Qty (2)
-    Note over Sales: ✓ Usa $59.99 oficial (ignora cliente)
-    Note over Sales: ✓ Genera clave: STEAM-A8F2-4B1C...
-    Note over Sales: ✓ Guarda en H2 (@Transactional)
-    
-    Sales-->>User: 201 Created
-    Note over User: Total: $119.98<br/>Status: PENDING<br/>CD-Keys generadas ✓
-    deactivate Sales
+    U->>S: POST /api/orders (gameId, quantity: 2)
+    S->>E: ¿Dónde está catalog-service?
+    E-->>S: localhost:8082
+    S->>C: GET /api/games/{gameId} (OpenFeign)
+    C->>M: findById()
+    M-->>C: Documento del juego
+    C-->>S: 200 OK (price: 59.99, stock: 10)
+    Note over S: Valida activo y stock<br/>Usa el precio oficial<br/>Genera clave digital
+    S->>S: Guarda orden en H2 (@Transactional)
+    S-->>U: 201 Created (total: 119.98, claves)
 ```
 
-| Paso | Qué Ocurre | Por Qué |
-|---|---|---|
-| 1 | Petición con `gameId` y `quantity` | Punto de entrada de la API |
-| 2 | Validación de estructura (`@Valid`) | Falla rápido antes de consultar servicios externos |
-| 3 | Resolución de `catalog-service` en Eureka | Evita direcciones IP fijas |
-| 4 | GET `/api/games/{id}` con OpenFeign | Obtiene precio, stock y estado reales y actuales |
-| 5 | Validación de existencia y estado | Impide vender juegos inactivos |
-| 6 | Validación de stock (`stock >= quantity`) | Evita sobrevender |
-| 7 | Cálculo con `BigDecimal` (precio oficial) | Evita errores de redondeo en dinero |
-| 8 | Generación de clave digital `STEAM-XXXX` | Entrega instantánea del producto digital |
-| 9 | Persistencia en transacción ACID | Todo-o-nada: garantiza consistencia |
-| 10 | Respuesta con `201 Created` | Confirmación al cliente |
+### Explicación de cada paso
+
+| # | Paso | Qué ocurre | Por qué |
+|---|---|---|---|
+| 1 | Petición del usuario | Llega un `POST /api/orders` con `userId` e `items`. | Punto de entrada de la API. |
+| 2 | Validación estructural | `@Valid` revisa que los campos requeridos estén presentes y sean correctos. | Falla rápido y barato, antes de consultar servicios externos. |
+| 3 | Resolución del servicio | Feign pregunta a Eureka por `catalog-service`. | Evita direcciones fijas. |
+| 4 | Consulta al catálogo | Por cada artículo se hace `GET /api/games/{id}`. | Se necesita precio, stock y estado **reales y actuales**. |
+| 5 | Validación de negocio | Se verifica que el juego exista, esté activo y que `stock >= quantity`. | Impide vender lo que no se puede entregar. |
+| 6 | Cálculo del total | `precio oficial × cantidad`, sumado con `BigDecimal`. | `BigDecimal` evita los errores de redondeo de `double` en dinero. |
+| 7 | Clave digital | Se genera una clave con formato `STEAM-XXXX` (basada en UUID). | Entrega el producto digital al comprador. |
+| 8 | Persistencia | Se guarda la orden y sus artículos en una sola transacción. | `@Transactional` garantiza todo-o-nada. |
+| 9 | Respuesta | Se devuelve `201 Created` con la orden en estado `PENDING`. | Confirma al cliente el resultado. |
 
 ---
 
-## 📂 Estructura del Proyecto
+## 7. Estructura del proyecto
 
 ```
 sales-service/
-├── .mvn/wrapper/                           # Maven Wrapper
+├── .mvn/wrapper/                    # Maven Wrapper (compilar sin instalar Maven)
 ├── src/
 │   ├── main/
 │   │   ├── java/com/jonathan/gamestore/sales/
-│   │   │   ├── SalesServiceApplication.java      # Punto de entrada
-│   │   │   ├── client/
-│   │   │   │   └── CatalogClient.java            # OpenFeign → catalog-service
-│   │   │   ├── config/
-│   │   │   │   └── H2Config.java                 # Servlet de consola H2
-│   │   │   ├── controller/
-│   │   │   │   └── SaleOrderController.java      # REST API /api/orders
-│   │   │   ├── dto/
-│   │   │   │   ├── SaleOrderRequest.java         # Request de entrada
-│   │   │   │   ├── OrderItemRequest.java         # Item de orden
-│   │   │   │   └── GameResponse.java             # Respuesta del catálogo
-│   │   │   ├── model/
-│   │   │   │   ├── SaleOrder.java                # Entidad raíz (sale_orders)
-│   │   │   │   ├── OrderItem.java                # Entidad detalle (order_items)
-│   │   │   │   └── OrderStatus.java              # Enum: PENDING, COMPLETED, CANCELLED
-│   │   │   ├── repository/
-│   │   │   │   └── SaleOrderRepository.java      # Spring Data JPA
-│   │   │   ├── service/
-│   │   │   │   └── SaleOrderService.java         # Lógica de negocio
-│   │   │   └── exception/
-│   │   │       ├── ErrorResponse.java            # Estructura estándar de error
-│   │   │       └── GlobalExceptionHandler.java   # @RestControllerAdvice
-│   │   └── resources/
-│   │       └── application.properties            # Configuración
-│   └── test/                                     # Pruebas automatizadas
-├── mvnw / mvnw.cmd                             # Scripts Maven Wrapper
-├── pom.xml                                      # Dependencias Maven
-└── README.md                                    # Este archivo
+│   │   │   ├── SalesServiceApplication.java
+│   │   │   ├── client/       CatalogClient.java
+│   │   │   ├── config/       H2Config.java
+│   │   │   ├── controller/   SaleOrderController.java
+│   │   │   ├── dto/          SaleOrderRequest, OrderItemRequest, GameResponse
+│   │   │   ├── exception/    ErrorResponse, GlobalExceptionHandler
+│   │   │   ├── model/        SaleOrder, OrderItem, OrderStatus
+│   │   │   ├── repository/   SaleOrderRepository.java
+│   │   │   └── service/      SaleOrderService.java
+│   │   └── resources/        application.properties
+│   └── test/                 # Pruebas
+├── mvnw / mvnw.cmd          # Scripts del Maven Wrapper (Linux-Mac / Windows)
+├── pom.xml                  # Dependencias y configuración de construcción
+└── README.md
 ```
 
-### Componentes Principales
+### Descripción de cada componente
 
-| Componente | Tipo | Responsabilidad |
-|---|---|---|
-| `SalesServiceApplication` | Main | Punto de entrada; activa `@EnableDiscoveryClient` y `@EnableFeignClients` |
-| `SaleOrderController` | REST | API `/api/orders`; valida estructura con `@Valid` |
-| `SaleOrderService` | Service | Orquesta validaciones, cálculos y llamadas a OpenFeign |
-| `CatalogClient` | Feign | Interfaz declarativa HTTP hacia `catalog-service` |
-| `SaleOrderRepository` | JPA | Acceso a datos SQL; genera consultas automáticas |
-| `SaleOrder` / `OrderItem` | Entity | Entidades JPA mapeadas a `sale_orders` y `order_items` |
-| `GlobalExceptionHandler` | Advice | Centraliza errores en estructura estándar |
+| Componente | Descripción |
+|---|---|
+| `SalesServiceApplication` | Punto de entrada. Activa `@EnableDiscoveryClient` (registro en Eureka) y `@EnableFeignClients` (clientes declarativos). |
+| `CatalogClient` | Interfaz Feign con `@FeignClient(name = "catalog-service")` que expone `getGameById(id)`. |
+| `H2Config` | Registra el servlet de la consola web de H2 en `/h2-console`. |
+| `SaleOrderController` | API REST bajo `/api/orders`. |
+| `SaleOrderService` | Orquesta validaciones, cálculo de montos, generación de claves y persistencia. |
+| `SaleOrderRepository` | `JpaRepository<SaleOrder, Long>` con consultas derivadas como `findByUserId`. |
+| `SaleOrderRequest` / `OrderItemRequest` | Records de entrada. El request **no** incluye `totalAmount` por seguridad. |
+| `GameResponse` | Record que replica el JSON que devuelve `catalog-service`. Existe porque este servicio no comparte clases con el catálogo. |
+| `ErrorResponse` | Estructura estándar de error (`status`, `error`, `message`, `validationErrors`, `timestamp`). |
+| `GlobalExceptionHandler` | `@RestControllerAdvice` que convierte excepciones en respuestas HTTP coherentes. |
+| `OrderStatus` | Enum de estados: `PENDING`, `COMPLETED`, `CANCELLED`. |
 
 ---
 
-## 📊 Modelo de Datos
+## 8. Modelo de datos
 
 ```mermaid
 erDiagram
     SALE_ORDERS ||--o{ ORDER_ITEMS : contiene
     SALE_ORDERS {
-        Long id PK "Autoincremental"
-        Long userId "ID del comprador"
-        BigDecimal totalAmount "Importe total calculado"
-        String status "PENDING, COMPLETED, CANCELLED"
-        LocalDateTime createdAt "Timestamp de creación"
+        Long id PK
+        Long userId
+        BigDecimal totalAmount
+        String status
+        LocalDateTime createdAt
     }
     ORDER_ITEMS {
-        Long id PK "Autoincremental"
-        Long order_id FK "Referencia a SALE_ORDERS"
-        String gameId "ObjectId de MongoDB (24 chars)"
-        String gameTitle "Nombre del juego (snapshot)"
-        BigDecimal unitPrice "Precio por unidad (snapshot)"
-        Integer quantity "Cantidad comprada"
-        String digitalKey "Clave digital STEAM-XXXX"
+        Long id PK
+        Long order_id FK
+        String gameId
+        String gameTitle
+        BigDecimal unitPrice
+        Integer quantity
+        String digitalKey
     }
 ```
 
-### Decisiones de Diseño
+**Decisiones relevantes:**
 
-- **`gameId` es `String`**: MongoDB usa ObjectIds de 24 caracteres
-- **Sin clave foránea hacia catálogo**: Viven en BDs diferentes
-- **`gameTitle` y `unitPrice` desnormalizados**: Se guardan en el ítem para preservar el precio y nombre del momento de la compra, aunque el catálogo cambie después
-- **Cascada `@OneToMany(cascade = ALL, orphanRemoval = true)`**: Guardar o eliminar una orden afecta también a sus artículos
-
----
-
-## 🚀 Quick Start
-
-### Requisitos Previos
-
-| Requisito | Versión | Verificar |
-|---|---|---|
-| JDK | 17+ | `java -version` |
-| Git | Cualquiera | `git --version` |
-| Maven | No es necesario (se incluye Maven Wrapper) | — |
-
-### Orden de Arranque (Crítico)
-
-⚠️ **IMPORTANTE:** Los servicios deben iniciarse en este orden:
-
-```
-1. eureka-server (Directorio de servicios)
-    ↓
-2. catalog-service (Catálogo de juegos)
-    ↓
-3. sales-service (Gestión de ventas)
-```
-
-Si inicias `sales-service` primero, intentará conectar a `catalog-service` y fallará.
-
-### Paso 1: Clonar el Repositorio
-
-```bash
-git clone https://github.com/Alger125/sales-service.git
-cd sales-service
-```
-
-### Paso 2: Iniciar Eureka Server
-
-En una **primera terminal**:
-
-```bash
-cd ../eureka-server
-./mvnw spring-boot:run          # Linux/macOS
-# o
-.\mvnw.cmd spring-boot:run      # Windows
-```
-
-✅ **Verificar:** Abre `http://localhost:8761` en el navegador. Deberías ver el Dashboard de Eureka vacío.
-
-### Paso 3: Iniciar Catalog Service
-
-En una **segunda terminal**:
-
-```bash
-cd ../catalog-service
-./mvnw spring-boot:run
-```
-
-⏳ Espera 5 segundos. ✅ **Verificar:** En Eureka aparecerá `CATALOG-SERVICE` con estado `UP`.
-
-**Requisito:** MongoDB debe estar corriendo en `localhost:27017`
-
-### Paso 4: Iniciar Sales Service
-
-En una **tercera terminal**:
-
-```bash
-cd ../sales-service
-./mvnw spring-boot:run
-```
-
-⏳ Espera 5 segundos. ✅ **Verificar:** En Eureka aparecerá `SALES-SERVICE` con estado `UP`.
-
-### Alternativa Rápida: Ejecutar JAR Compilado
-
-```bash
-./mvnw clean package -DskipTests
-java -Xmx300m -jar target/sales-service-0.0.1-SNAPSHOT.jar
-```
-
-- `-DskipTests`: Omite pruebas (más rápido)
-- `-Xmx300m`: Limita RAM a 300 MB (útil en máquinas con 8 GB)
-
-### Accesos Útiles
-
-| Componente | URL |
-|---|---|
-| **Sales Service API** | `http://localhost:8081/api/orders` |
-| **Consola H2** | `http://localhost:8081/h2-console` |
-| **Eureka Dashboard** | `http://localhost:8761` |
-| **Catalog Service API** | `http://localhost:8082/api/games` |
+- `gameId` es `String` porque los identificadores de MongoDB (`ObjectId`) son cadenas de 24 caracteres. **No hay clave foránea hacia el catálogo**, porque vive en otra base de datos.
+- `gameTitle` y `unitPrice` se **guardan dentro del ítem** (desnormalización intencional): así la orden conserva el precio y nombre del momento de la compra, aunque el catálogo cambie después.
+- La relación `@OneToMany(cascade = ALL, orphanRemoval = true)` hace que guardar o borrar una orden afecte también a sus artículos.
 
 ---
 
-## 📡 Referencia de la API
+## 9. Referencia de la API
 
-**URL Base:** `http://localhost:8081/api/orders`
-
-### Endpoints
+**URL base:** `http://localhost:8081/api/orders`
 
 | Operación | Método | Ruta | Descripción | Éxito | Errores |
 |---|---|---|---|---|---|
-| **Crear orden** | `POST` | `/api/orders` | Registra una orden validando en catálogo | `201` | `400`, `404` |
-| **Listar todas** | `GET` | `/api/orders` | Retorna todas las órdenes | `200` | `500` |
-| **Consultar por ID** | `GET` | `/api/orders/{id}` | Retorna una orden específica | `200` | `404` |
-| **Consultar por usuario** | `GET` | `/api/orders/user/{userId}` | Filtra órdenes de un usuario | `200` | — |
-| **Actualizar** | `PUT` | `/api/orders/{id}` | Actualiza orden recalculando montos | `200` | `400`, `404` |
-| **Eliminar** | `DELETE` | `/api/orders/{id}` | Elimina orden y detalles en cascada | `204` | `404` |
+| Crear | `POST` | `/api/orders` | Crea una orden validando precio y stock en el catálogo. | `201` | `400`, `404` |
+| Listar | `GET` | `/api/orders` | Devuelve todas las órdenes. | `200` | `500` |
+| Consultar | `GET` | `/api/orders/{id}` | Devuelve una orden por ID. | `200` | `404` |
+| Por usuario | `GET` | `/api/orders/user/{userId}` | Devuelve las órdenes de un usuario. | `200` | — |
+| Actualizar | `PUT` | `/api/orders/{id}` | Actualiza una orden recalculando montos contra el catálogo. | `200` | `400`, `404` |
+| Eliminar | `DELETE` | `/api/orders/{id}` | Elimina la orden y sus artículos en cascada. | `204` | `404` |
 
-### Ejemplo: Crear una Orden
+### Ejemplo: crear una orden
 
-#### Request
+**Petición**
 
 ```http
 POST /api/orders
@@ -484,7 +307,7 @@ Content-Type: application/json
 }
 ```
 
-#### Response `201 Created`
+**Respuesta `201 Created`** *(ilustrativa; los nombres exactos pueden variar según la entidad)*
 
 ```json
 {
@@ -495,29 +318,29 @@ Content-Type: application/json
   "createdAt": "2026-09-30T10:15:00",
   "items": [
     {
-      "id": 1,
       "gameId": "650c1f1e9b1d8b2bad000001",
       "gameTitle": "Elden Ring",
       "unitPrice": 59.99,
       "quantity": 2,
-      "digitalKey": "STEAM-A8F2-4B1C-D9E3-F7G2"
+      "digitalKey": "STEAM-A8F2-4B1C-..."
     }
   ]
 }
 ```
 
-### Manejo de Errores
+---
 
-`GlobalExceptionHandler` centraliza todas las respuestas de error.
+## 10. Manejo de errores
 
-| Situación | Excepción | HTTP | Ejemplo |
+`GlobalExceptionHandler` centraliza los errores para que **todas** las respuestas de fallo tengan el mismo formato.
+
+| Situación | Excepción capturada | HTTP | Ejemplo de causa |
 |---|---|---|---|
-| Validación fallida | `MethodArgumentNotValidException` | `400` | Falta `userId` o `quantity` negativa |
-| Regla de negocio | `IllegalArgumentException` | `400` | Stock insuficiente, juego inactivo |
-| Juego no encontrado | Error 404 de Feign | `404` | `gameId` inexistente |
-| Error del servidor | `Exception` | `500` | Error no controlado |
+| Datos de entrada inválidos | `MethodArgumentNotValidException` | 400 | Falta `userId` o `quantity` es negativa. |
+| Regla de negocio incumplida | `IllegalArgumentException` | 400 | "Stock insuficiente", "Videojuego inactivo o inexistente". |
+| Juego no encontrado en catálogo | Error 404 de Feign | 404 | `gameId` inexistente. |
 
-**Estructura de Error Estándar:**
+**Formato estándar de error**
 
 ```json
 {
@@ -529,16 +352,108 @@ Content-Type: application/json
 }
 ```
 
+**Por qué centralizarlo:** el cliente siempre sabe qué estructura esperar, y los controladores se mantienen limpios, sin bloques `try/catch`.
+
 ---
 
-## ✅ Guía de Pruebas
+## 11. Configuración
 
-### Escenario Completo (End-to-End)
+Archivo: `src/main/resources/application.properties`
 
-#### 1️⃣ Crear un Videojuego en Catálogo
+```properties
+spring.application.name=sales-service
+server.port=8081
+eureka.client.service-url.defaultZone=http://localhost:8761/eureka/
+```
 
-<details open>
-<summary><b>cURL</b></summary>
+| Propiedad | Valor | Para qué sirve |
+|---|---|---|
+| `spring.application.name` | `sales-service` | Nombre con el que se registra en Eureka. Otros servicios lo usan para encontrarlo. |
+| `server.port` | `8081` | Puerto HTTP del servicio. |
+| `eureka.client.service-url.defaultZone` | `http://localhost:8761/eureka/` | Dirección del servidor Eureka. |
+
+**Base de datos H2**
+
+| Parámetro | Valor |
+|---|---|
+| Consola | `http://localhost:8081/h2-console` |
+| JDBC URL | `jdbc:h2:mem:salesdb` |
+
+> ⚠️ H2 es **en memoria**: los datos se pierden al reiniciar el servicio. Es intencional para desarrollo; para producción debe reemplazarse por PostgreSQL, MySQL u otro motor persistente.
+
+---
+
+## 12. Instalación y ejecución
+
+### Requisitos previos
+
+| Requisito | Versión | Verificación |
+|---|---|---|
+| JDK | 17 o superior | `java -version` |
+| Git | Cualquiera reciente | `git --version` |
+| Maven | No necesario (se usa el wrapper) | — |
+
+### Orden de arranque (importante)
+
+Los servicios **deben iniciarse en este orden**:
+
+1. **`eureka-server`**: es el directorio; si no existe, los demás no pueden registrarse.
+2. **`catalog-service`**: debe estar disponible para que las ventas puedan validar juegos.
+3. **`sales-service`**: depende de los dos anteriores.
+
+### Paso 1. Clonar el repositorio
+
+```bash
+git clone https://github.com/Alger125/sales-service.git
+cd sales-service
+```
+
+### Paso 2. Iniciar Eureka Server
+
+```bash
+cd ../eureka-server
+./mvnw spring-boot:run          # Windows: .\mvnw.cmd spring-boot:run
+```
+
+**Verificar:** abrir `http://localhost:8761` y ver el panel de Eureka.
+
+### Paso 3. Iniciar Catalog Service
+
+```bash
+cd ../catalog-service
+./mvnw spring-boot:run
+```
+
+**Verificar:** `CATALOG-SERVICE` aparece en Eureka con estado `UP`. Requiere MongoDB disponible en el puerto `27017`.
+
+### Paso 4. Iniciar Sales Service
+
+```bash
+cd ../sales-service
+./mvnw spring-boot:run
+```
+
+**Verificar:** `SALES-SERVICE` aparece en Eureka con estado `UP`.
+
+### Alternativa: ejecutar el JAR (equipos con poca RAM)
+
+```bash
+./mvnw clean package -DskipTests
+java -Xmx300m -jar target/sales-service-0.0.1-SNAPSHOT.jar
+```
+
+- `-DskipTests` acelera la compilación omitiendo pruebas.
+- `-Xmx300m` limita la memoria de la JVM a 300 MB, útil cuando se ejecutan varios servicios en una máquina de 8 GB.
+
+---
+
+## 13. Guía de pruebas
+
+Los ejemplos usan **cURL** (Linux/macOS/Git Bash). Más abajo hay equivalentes en PowerShell.
+
+### Escenario completo de extremo a extremo
+
+**1. Crear un videojuego en el catálogo** (guarda el `id` devuelto)
 
 ```bash
 curl -X POST http://localhost:8082/api/games \
@@ -553,390 +468,88 @@ curl -X POST http://localhost:8082/api/games \
   }'
 ```
 
-</details>
-
-<details>
-<summary><b>PowerShell</b></summary>
-
-```powershell
-$gameResponse = Invoke-RestMethod -Uri "http://localhost:8082/api/games" -Method Post `
-  -ContentType "application/json" `
-  -Body '{
-    "title": "Elden Ring",
-    "description": "Edición Estándar",
-    "genre": "RPG",
-    "price": 59.99,
-    "stock": 10,
-    "platforms": ["PC", "PS5"]
-  }'
-
-$gameId = $gameResponse.id
-Write-Host "✓ Juego creado con ID: $gameId"
-```
-
-</details>
-
-**Respuesta esperada:** `201 Created` con `id` del juego (guarda este ID)
-
----
-
-#### 2️⃣ Crear una Orden de Compra
-
-<details open>
-<summary><b>cURL</b></summary>
+**2. Crear la orden de compra** (sustituir `GAME_ID`)
 
 ```bash
-GAME_ID="650c1f1e9b1d8b2bad000001"  # Sustituir con el ID del paso anterior
-
 curl -X POST http://localhost:8081/api/orders \
   -H "Content-Type: application/json" \
-  -d "{
-    \"userId\": 101,
-    \"items\": [
-      {
-        \"gameId\": \"$GAME_ID\",
-        \"gameTitle\": \"Elden Ring\",
-        \"unitPrice\": 59.99,
-        \"quantity\": 2
-      }
+  -d '{
+    "userId": 101,
+    "items": [
+      { "gameId": "GAME_ID", "gameTitle": "Elden Ring", "unitPrice": 59.99, "quantity": 2 }
     ]
-  }"
+  }'
 ```
 
-</details>
+*Resultado esperado:* `201 Created`, total `119.98`, estado `PENDING` y claves digitales generadas.
 
-<details>
-<summary><b>PowerShell</b></summary>
-
-```powershell
-Invoke-RestMethod -Uri "http://localhost:8081/api/orders" -Method Post `
-  -ContentType "application/json" `
-  -Body @"
-{
-  "userId": 101,
-  "items": [
-    {
-      "gameId": "$gameId",
-      "gameTitle": "Elden Ring",
-      "unitPrice": 59.99,
-      "quantity": 2
-    }
-  ]
-}
-"@ | ConvertTo-Json -Depth 5
-```
-
-</details>
-
-**Resultado esperado:**
-- ✅ HTTP `201 Created`
-- ✅ `totalAmount`: `119.98`
-- ✅ `status`: `PENDING`
-- ✅ Claves digitales generadas: `STEAM-XXXX-XXXX-XXXX-XXXX`
-
----
-
-#### 3️⃣ Listar Todas las Órdenes
-
-<details open>
-<summary><b>cURL</b></summary>
+**3. Consultas**
 
 ```bash
-curl http://localhost:8081/api/orders
+curl http://localhost:8081/api/orders              # todas
+curl http://localhost:8081/api/orders/1            # por ID
+curl http://localhost:8081/api/orders/user/101     # por usuario
 ```
 
-</details>
-
-<details>
-<summary><b>PowerShell</b></summary>
-
-```powershell
-Invoke-RestMethod -Uri "http://localhost:8081/api/orders" | ConvertTo-Json -Depth 10
-```
-
-</details>
-
----
-
-#### 4️⃣ Consultar Órdenes de un Usuario
-
-<details open>
-<summary><b>cURL</b></summary>
-
-```bash
-curl http://localhost:8081/api/orders/user/101
-```
-
-</details>
-
-<details>
-<summary><b>PowerShell</b></summary>
-
-```powershell
-Invoke-RestMethod -Uri "http://localhost:8081/api/orders/user/101" | ConvertTo-Json -Depth 10
-```
-
-</details>
-
----
-
-#### 5️⃣ Eliminar una Orden
-
-<details open>
-<summary><b>cURL</b></summary>
+**4. Eliminar**
 
 ```bash
 curl -X DELETE http://localhost:8081/api/orders/1 -i
 ```
 
-</details>
+*Resultado esperado:* `204 No Content`.
 
-<details>
-<summary><b>PowerShell</b></summary>
+### Pruebas de casos negativos (recomendadas)
+
+| Caso | Cómo provocarlo | Resultado esperado |
+|---|---|---|
+| Stock insuficiente | `quantity` mayor al `stock` del juego | `400` con mensaje de stock |
+| Juego inexistente | `gameId` que no existe | `404` |
+| Validación | Enviar `items` vacío o sin `userId` | `400` con `validationErrors` |
+| Manipulación de precio | Enviar `unitPrice: 0.01` | El total se calcula con el **precio oficial**, no con `0.01` |
+| Catálogo caído | Detener `catalog-service` y crear orden | Error controlado (ver [mejoras futuras](#15-mejoras-futuras)) |
+
+### Equivalente en PowerShell
 
 ```powershell
-Invoke-WebRequest -Uri "http://localhost:8081/api/orders/1" -Method Delete
+Invoke-RestMethod -Uri "http://localhost:8081/api/orders" -Method Post `
+  -ContentType "application/json" `
+  -Body '{"userId":101,"items":[{"gameId":"GAME_ID","gameTitle":"Elden Ring","unitPrice":59.99,"quantity":2}]}' |
+  ConvertTo-Json -Depth 5
 ```
-
-</details>
-
-**Resultado esperado:** `204 No Content`
 
 ---
 
-### Pruebas de Casos Negativos (Recomendadas)
+## 14. Solución de problemas
 
-| Caso | Cómo | Resultado Esperado |
+| Síntoma | Causa probable | Solución |
 |---|---|---|
-| **Stock insuficiente** | `quantity` > `stock` del juego | `400` con mensaje de stock |
-| **Juego inexistente** | `gameId` que no existe | `404` |
-| **Validación fallida** | `items` vacío o sin `userId` | `400` con `validationErrors` |
-| **Manipulación de precio** | Enviar `unitPrice: 0.01` | Total se calcula con precio oficial, no con `0.01` ✓ |
-| **Catálogo caído** | Detener `catalog-service` y crear orden | Error controlado de conexión |
+| `Connection refused` a `localhost:8761` | Eureka no está iniciado. | Iniciar `eureka-server` primero. |
+| `Load balancer does not contain an instance for catalog-service` | `catalog-service` no se ha registrado aún. | Esperar unos segundos y revisar el panel de Eureka. |
+| `404` al crear orden | El `gameId` no existe en MongoDB. | Crear el juego y usar el `id` devuelto. |
+| Puerto `8081` ocupado | Otro proceso lo usa. | Cambiar `server.port` o cerrar el proceso. |
+| Los datos desaparecen al reiniciar | H2 es en memoria. | Comportamiento esperado; usar una BD persistente si se requiere. |
+| `OutOfMemoryError` | Poca memoria disponible. | Ajustar `-Xmx` o cerrar otras aplicaciones. |
 
 ---
 
-## 🐛 Solución de Problemas
+## 15. Mejoras futuras
 
-### Problema: `Connection refused` a `localhost:8761`
+Puntos identificados que fortalecerían el servicio:
 
-**Causa:** Eureka Server no está iniciado.
-
-**Solución:**
-```bash
-cd ../eureka-server
-./mvnw spring-boot:run
-```
-
----
-
-### Problema: `Load balancer does not have available server`
-
-**Causa:** `catalog-service` no se ha registrado en Eureka todavía.
-
-**Solución:** Espera 5 segundos y verifica en `http://localhost:8761` que `CATALOG-SERVICE` esté con estado `UP`.
+- **Resiliencia:** agregar *Circuit Breaker*, *timeouts* y *fallbacks* (por ejemplo con Resilience4j) para que una caída del catálogo no bloquee las ventas.
+- **Descuento de stock:** definir cómo y cuándo se reduce el inventario tras una compra confirmada, y qué pasa si dos compras simultáneas piden la última unidad.
+- **Mensajería asíncrona:** el `pom.xml` ya incluye Spring Kafka; puede usarse para publicar eventos como `OrderCreated` y desacoplar notificaciones o actualizaciones de inventario.
+- **Configuración centralizada:** el cliente de Spring Cloud Config ya está incluido; falta conectarlo a un Config Server.
+- **Persistencia real:** migrar de H2 a PostgreSQL/MySQL y agregar migraciones con Flyway o Liquibase.
+- **Seguridad:** autenticación y autorización (JWT / OAuth2), para no depender de que el cliente indique su propio `userId`.
+- **Documentación interactiva:** exponer la API con OpenAPI/Swagger.
+- **Pruebas automatizadas:** pruebas unitarias del servicio (mockeando `CatalogClient`) y de integración.
+- **Contenedores:** `Dockerfile` y `docker-compose.yml` para levantar todo el ecosistema con un solo comando.
+- **Observabilidad:** logs estructurados, métricas con Actuator y trazabilidad distribuida.
 
 ---
 
-### Problema: `404` al crear orden
+## Autor
 
-**Causa:** El `gameId` no existe en MongoDB.
-
-**Solución:** Crea un juego en `catalog-service` y usa el `id` devuelto:
-
-```bash
-curl -X POST http://localhost:8082/api/games \
-  -H "Content-Type: application/json" \
-  -d '{"title":"Game Name","price":29.99,"stock":5,"genre":"RPG"}'
-```
-
----
-
-### Problema: Puerto `8081` ocupado
-
-**Causa:** Otro proceso usa el puerto.
-
-**Solución:** Cambia el puerto en `application.properties`:
-
-```properties
-server.port=8085
-```
-
-O mata el proceso:
-
-```bash
-# Linux/macOS
-lsof -ti:8081 | xargs kill -9
-
-# Windows
-netstat -ano | findstr :8081
-taskkill /PID <PID> /F
-```
-
----
-
-### Problema: Los datos desaparecen al reiniciar
-
-**Causa:** H2 es **en memoria** (`jdbc:h2:mem:salesdb`).
-
-**Comportamiento:** Esperado en desarrollo. Para producción, usa PostgreSQL, MySQL o similar.
-
----
-
-### Problema: `OutOfMemoryError`
-
-**Causa:** Poca RAM disponible.
-
-**Solución:** Ajusta `-Xmx`:
-
-```bash
-java -Xmx500m -jar target/sales-service-0.0.1-SNAPSHOT.jar
-```
-
-O cierra otras aplicaciones.
-
----
-
-### Problema: `Hystrix CircuitBreaker is open`
-
-**Causa:** Demasiadas llamadas fallidas a `catalog-service`.
-
-**Solución:** Verifica que `catalog-service` esté activo y en `http://localhost:8761`.
-
----
-
-## 🔮 Mejoras Futuras
-
-Puntos identificados para fortalecer el servicio:
-
-### 1. **Resiliencia (Circuit Breaker, Retry, Timeout)**
-```java
-// Usar Resilience4j
-@CircuitBreaker(name = "catalogService")
-@Retry(name = "catalogService")
-@Timeout(name = "catalogService")
-GameResponse getGameById(String id) { ... }
-```
-
-### 2. **Descuento de Stock Automático**
-- Definir cuándo y cómo se reduce el inventario en MongoDB
-- Manejar race conditions (dos compras por la última unidad)
-
-### 3. **Mensajería Asíncrona (Kafka)**
-El `pom.xml` ya incluye `spring-boot-starter-kafka`:
-
-```java
-@KafkaListener(topics = "sales-events")
-void handleOrderCreated(OrderCreatedEvent event) { ... }
-
-kafkaTemplate.send("sales-events", new OrderCreatedEvent(...));
-```
-
-### 4. **Configuración Centralizada (Spring Cloud Config)**
-Ya está en `pom.xml`. Conectar a `spring-cloud-config-server`.
-
-### 5. **Persistencia Real (PostgreSQL/MySQL)**
-Reemplazar H2 en memoria:
-
-```xml
-<dependency>
-    <groupId>org.springframework.boot</groupId>
-    <artifactId>spring-boot-starter-data-jpa</artifactId>
-</dependency>
-<dependency>
-    <groupId>org.postgresql</groupId>
-    <artifactId>postgresql</artifactId>
-</dependency>
-```
-
-### 6. **Seguridad (JWT / OAuth2)**
-Agregar autenticación para no depender de que el cliente indique su `userId`:
-
-```java
-@Bean
-public SecurityFilterChain filterChain(HttpSecurity http) { ... }
-```
-
-### 7. **Documentación Interactiva (Swagger/OpenAPI)**
-```xml
-<dependency>
-    <groupId>org.springdoc</groupId>
-    <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
-    <version>2.0.2</version>
-</dependency>
-```
-
-Accesible en `http://localhost:8081/swagger-ui.html`
-
-### 8. **Pruebas Automatizadas**
-- Unitarias (mockeando `CatalogClient`)
-- Integración (`@SpringBootTest`)
-- End-to-End (Testcontainers)
-
-### 9. **Contenedores (Docker)**
-```dockerfile
-FROM openjdk:17-slim
-COPY target/sales-service-*.jar app.jar
-ENTRYPOINT ["java","-Xmx300m","-jar","app.jar"]
-```
-
-```yaml
-# docker-compose.yml
-services:
-  eureka-server:
-    image: eureka-server
-    ports: ["8761:8761"]
-  
-  catalog-service:
-    image: catalog-service
-    ports: ["8082:8082"]
-    depends_on: [eureka-server]
-  
-  sales-service:
-    image: sales-service
-    ports: ["8081:8081"]
-    depends_on: [eureka-server, catalog-service]
-```
-
-### 10. **Observabilidad (Logs, Métricas, Trazas)**
-- **Logs estructurados:** SLF4J + Logback
-- **Métricas:** Spring Boot Actuator + Prometheus
-- **Trazabilidad distribuida:** Sleuth + Zipkin
-
----
-
-## 📝 Licencia
-
-Este proyecto está bajo la licencia **MIT**. Consulta el archivo `LICENSE` para más detalles.
-
----
-
-## 🤝 Contribuciones
-
-Las contribuciones son bienvenidas. Por favor:
-
-1. Fork el repositorio
-2. Crea una rama para tu feature (`git checkout -b feature/amazing-feature`)
-3. Haz commit de tus cambios (`git commit -m 'Add amazing feature'`)
-4. Push a la rama (`git push origin feature/amazing-feature`)
-5. Abre un Pull Request
-
----
-
-## 📚 Recursos Adicionales
-
-- [Spring Boot Documentation](https://spring.io/projects/spring-boot)
-- [Spring Cloud Netflix Eureka](https://spring.io/projects/spring-cloud-netflix)
-- [Spring Cloud OpenFeign](https://spring.io/projects/spring-cloud-openfeign)
-- [Spring Data JPA](https://spring.io/projects/spring-data-jpa)
-- [H2 Database](https://www.h2database.com/)
-
----
-
-<div align="center">
-
-**Hecho con ❤️ por [Alger125](https://github.com/Alger125)**
-
-[⬆ Volver al inicio](#sales-service)
-
-</div>
+**Alger125** · [github.com/Alger125](https://github.com/Alger125)
