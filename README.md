@@ -1,11 +1,12 @@
 # Sales Service
 
-> Microservicio de **ventas, órdenes de compra y generación de claves digitales** para una tienda de videojuegos, construido sobre una arquitectura de microservicios con Spring Cloud y protegido con Resilience4j.
+> Microservicio de **ventas, órdenes de compra y generación de claves digitales** para una tienda de videojuegos, construido sobre una arquitectura de microservicios con Spring Cloud, protegido con Resilience4j y documentado interactivamente con Swagger / OpenAPI 3.
 
 ![Java](https://img.shields.io/badge/Java-17-orange)
 ![Spring Boot](https://img.shields.io/badge/Spring%20Boot-4.1.1-brightgreen)
 ![Spring Cloud](https://img.shields.io/badge/Spring%20Cloud-2025.1.3-blue)
 ![Resilience4j](https://img.shields.io/badge/Resilience4j-Circuit%20Breaker-yellow)
+![OpenAPI 3](https://img.shields.io/badge/OpenAPI%203-Swagger%20UI-green)
 ![Build](https://img.shields.io/badge/Build-Maven-red)
 
 ---
@@ -20,7 +21,7 @@
 6. [Flujo de una compra, paso a paso](#6-flujo-de-una-compra-paso-a-paso)
 7. [Estructura del proyecto](#7-estructura-del-proyecto)
 8. [Modelo de datos](#8-modelo-de-datos)
-9. [Referencia de la API](#9-referencia-de-la-api)
+9. [Referencia de la API y Swagger UI](#9-referencia-de-la-api-y-swagger-ui)
 10. [Manejo de errores](#10-manejo-de-errores)
 11. [Configuración](#11-configuración)
 12. [Instalación y ejecución](#12-instalación-y-ejecución)
@@ -40,6 +41,7 @@
 | Validación contra el catálogo | Consulta a `catalog-service` para confirmar que el juego existe, está activo y tiene stock. |
 | Cálculo seguro del total | Calcula el monto usando el **precio oficial del catálogo**, nunca el que envía el cliente. |
 | Tolerancia a fallos | Aísla caídas del catálogo mediante Circuit Breaker y Fallback (HTTP 503 controlado). |
+| Documentación interactiva | Expone interfaz visual Swagger UI para probar endpoints desde el navegador. |
 | Generación de claves digitales | Emite una clave por compra (formato `STEAM-XXXX`). |
 | Consulta y administración | Lista, busca, actualiza y elimina órdenes. |
 
@@ -58,6 +60,7 @@
 | Spring Cloud Netflix Eureka Client | 2025.1.3 | Descubrimiento de servicios | Permite localizar otros servicios por nombre, sin IPs fijas. |
 | Spring Cloud OpenFeign | 2025.1.3 | Cliente HTTP declarativo | Se consume otra API escribiendo solo una interfaz. |
 | Spring Cloud Circuit Breaker (Resilience4j) | 2025.1.3 | Tolerancia a fallos y resiliencia | Implementa el patrón Circuit Breaker y Fallback para aislar caídas de `catalog-service`. |
+| Springdoc OpenAPI 3 (Swagger UI) | 2.8.5 | Documentación interactiva | Genera la UI en `/swagger-ui.html` para explorar y probar la API sin herramientas externas. |
 | Spring Cloud Config Client | 2025.1.3 | Configuración centralizada | Preparado para externalizar propiedades. |
 | Spring Kafka | (BOM de Boot) | Mensajería asíncrona | Preparado para publicar eventos (ver [mejoras futuras](#15-mejoras-futuras)). |
 | Bean Validation | (BOM de Boot) | Validación de entrada | Rechaza datos inválidos antes de llegar a la lógica de negocio. |
@@ -126,7 +129,7 @@ flowchart TB
 
 ```mermaid
 flowchart TB
-    C["Cliente (Postman / Frontend)"]
+    C["Cliente (Swagger UI / Frontend)"]
     CTRL["1. Controller<br/>SaleOrderController"]
     SVC["2. Service<br/>SaleOrderService"]
     FEIGN["CatalogClient<br/>(OpenFeign)"]
@@ -146,7 +149,7 @@ flowchart TB
 
 | Capa | Clase | Responsabilidad | Por qué está separada |
 |---|---|---|---|
-| Controller | `SaleOrderController` | Recibe HTTP, valida estructura (`@Valid`), delega. | Solo "habla HTTP"; sin reglas de negocio. |
+| Controller | `SaleOrderController` | Recibe HTTP, valida estructura (`@Valid`), documentado con Swagger. | Solo "habla HTTP"; sin reglas de negocio. |
 | Service | `SaleOrderService` | Reglas de negocio, cálculo de montos, transacciones ACID. | Probable unitariamente sin servidor web. |
 | Client | `CatalogClient` | Contrato declarativo HTTP hacia `catalog-service`. | Si la URL o ruta cambia, solo se toca este punto. |
 | Resiliencia | `CatalogClientFallback` | Plan de contingencia ante caídas del catálogo. | Aísla los fallos de red de la lógica de negocio. |
@@ -159,7 +162,7 @@ flowchart TB
 ```mermaid
 sequenceDiagram
     autonumber
-    participant U as Usuario
+    participant U as Usuario (Swagger UI)
     participant S as sales-service
     participant E as eureka-server
     participant C as catalog-service
@@ -194,7 +197,7 @@ sales-service/
 │   │   ├── java/com/jonathan/gamestore/sales/
 │   │   │   ├── SalesServiceApplication.java
 │   │   │   ├── client/       CatalogClient.java, CatalogClientFallback.java
-│   │   │   ├── config/       H2Config.java
+│   │   │   ├── config/       H2Config.java, OpenApiConfig.java
 │   │   │   ├── controller/   SaleOrderController.java
 │   │   │   ├── dto/          SaleOrderRequest, OrderItemRequest, GameResponse
 │   │   │   ├── exception/    ErrorResponse, GlobalExceptionHandler, CatalogUnavailableException.java
@@ -213,10 +216,11 @@ sales-service/
 | Componente | Descripción |
 |---|---|
 | `SalesServiceApplication` | Punto de entrada con `@EnableDiscoveryClient` y `@EnableFeignClients`. |
+| `OpenApiConfig` | Configuración de metadatos globales (título, autor Alger125, versión) para Swagger UI. |
 | `CatalogClient` | Interfaz Feign que define el contrato HTTP hacia `catalog-service` con `fallback = CatalogClientFallback.class`. |
 | `CatalogClientFallback` | Implementación del plan de contingencia: intercepta caídas de red y arroja `CatalogUnavailableException`. |
 | `CatalogUnavailableException` | Excepción de dominio para caídas o saturación del catálogo de videojuegos. |
-| `SaleOrderController` | API REST bajo `/api/orders`. |
+| `SaleOrderController` | API REST bajo `/api/orders` enriquecida con anotaciones OpenAPI (`@Tag`, `@Operation`, `@ApiResponse`). |
 | `SaleOrderService` | Orquesta validaciones, precio oficial, claves digitales y persistencia. |
 | `SaleOrderRepository` | Repositorio JPA relacional para la entidad `SaleOrder`. |
 | `ErrorResponse` | Record que unifica el formato JSON de todas las respuestas de error. |
@@ -249,7 +253,12 @@ erDiagram
 
 ---
 
-## 9. Referencia de la API
+## 9. Referencia de la API y Swagger UI
+
+> **Documentación interactiva disponible:**  
+> Con el servicio en ejecución, puedes acceder y probar todos los endpoints visualmente desde tu navegador:  
+> - **Swagger UI:** [http://localhost:8081/swagger-ui.html](http://localhost:8081/swagger-ui.html)  
+> - **OpenAPI Spec (JSON):** [http://localhost:8081/v3/api-docs](http://localhost:8081/v3/api-docs)
 
 **URL base:** `http://localhost:8081/api/orders`
 
@@ -332,7 +341,12 @@ cd sales-service
 
 ## 13. Guía de pruebas
 
-### Prueba de Resiliencia: Catálogo Apagado
+### 1. Pruebas Interactivas con Swagger UI
+
+1. Levanta `sales-service` y abre [http://localhost:8081/swagger-ui.html](http://localhost:8081/swagger-ui.html).
+2. Selecciona cualquier endpoint, pulsa **"Try it out"** y luego **"Execute"**.
+
+### 2. Prueba de Resiliencia: Catálogo Apagado
 
 1. Enciende `eureka-server` (`8761`) y `sales-service` (`8081`).
 2. Mantén `catalog-service` **apagado**.
@@ -358,13 +372,13 @@ Invoke-RestMethod -Uri "http://localhost:8081/api/orders" -Method Post -ContentT
 | `503 Service Unavailable` | `catalog-service` está fuera de línea. | Normal en pruebas de resiliencia; inicia `catalog-service` para compras exitosas. |
 | `Cannot execute request on any known server` | Eureka no está encendido al arrancar `sales-service`. | Iniciar primero `eureka-server` en el puerto 8761. |
 | `400 Bad Request` en validación | Falta `unitPrice` o `userId` en el JSON. | Incluir todos los campos requeridos por `OrderItemRequest`. |
+| Swagger UI no carga | Servicio no arrancó o URL incorrecta. | Verificar que `sales-service` esté corriendo y abrir `http://localhost:8081/swagger-ui.html`. |
 
 ---
 
 ## 15. Mejoras futuras
 
 - **Mensajería Asíncrona:** publicar eventos `OrderCreatedEvent` con Spring Kafka para que el catálogo descuente existencias en background.
-- **Documentación Interactiva:** interfaz gráfica OpenAPI / Swagger en `/swagger-ui.html`.
 - **API Gateway:** enrutar peticiones a través de Spring Cloud Gateway en el puerto 8080.
 - **Persistencia en Producción:** migración de H2 a PostgreSQL.
 - **Contenedores:** empaquetar con `Dockerfile` y levantar clúster con `docker-compose.yml`.
