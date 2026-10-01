@@ -84,4 +84,23 @@ public class GlobalExceptionHandler {
  );
  return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
  }
+ /**
+  * Maneja caidas de microservicios externos y Circuit Breaker abierto.
+  * Retorna HTTP 503 (Service Unavailable) con formato estandar.
+  */
+ /**
+  * Maneja caidas de microservicios externos y Circuit Breaker abierto.
+  * Retorna HTTP 503 (Service Unavailable) con formato estandar.
+  */
+ @ExceptionHandler(CatalogUnavailableException.class)
+ public ResponseEntity<ErrorResponse> handleCatalogUnavailable(CatalogUnavailableException ex) {
+  ErrorResponse error = new ErrorResponse(
+          HttpStatus.SERVICE_UNAVAILABLE.value(),
+          "Service Unavailable",
+          ex.getMessage(),
+          null,
+          LocalDateTime.now()
+  );
+  return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(error);
+ }
 }
